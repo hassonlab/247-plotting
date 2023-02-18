@@ -183,7 +183,19 @@ def get_cmap_smap(args):
     # colors = [colorFader('#97baf7','#000308',i/col_len) for i in range(1,col_len)] # color gradient
 
     # colors2 = [colorFader('#97baf7','#032661',i/col_len) for i in range(1,col_len)] # color gradient
-    # colors1 = [colorFader('#f2b5b1','#6e0801',i/col_len) for i in range(1,col_len)]
+    colors1 = [
+        colorFader("#f2b5b1", "#6e0801", i / col_len) for i in range(1, col_len)
+    ]
+    colors = [
+        colorFader("#800080", "#069AF3", i / col_len) for i in range(0, col_len)
+    ]
+    colors = [
+        colorFader("#00FF00", "#008000", i / col_len) for i in range(0, col_len)
+    ]
+    colors = [
+        colorFader("#FF4500", "#8C000F", i / col_len) for i in range(0, col_len)
+    ]  # orange-red
+
     # colors = colors1 + colors2
     styles = ["-", "--", "-.", ":"]
     cmap = {}  # line color map
