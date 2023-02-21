@@ -14,8 +14,8 @@ USR := $(shell whoami | head -c 2)
 set-up:
 	mkdir -p data
 	mkdir -p results
-	mkdir -p data/plotting
-	ln -sf /projects/HASSON/247/plotting/* data/plotting/
+	mkdir -p data/
+	ln -sf /projects/HASSON/247/plotting data/
 	mkdir -p data/pickling
 	ln -fs $(PDIR)/247-pickling/results/* data/pickling/
 	mkdir -p data/encoding
