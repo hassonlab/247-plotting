@@ -3,6 +3,7 @@ import glob
 import os
 import pandas as pd
 import numpy as np
+import pickle
 from multiprocessing import Pool
 from functools import partial
 from scipy import stats
@@ -117,3 +118,19 @@ def read_folder(
             )
 
     return data
+
+
+def load_pickle(file):
+    """Load the datum pickle and returns as a dataframe
+
+    Args:
+        file (string): labels pickle from 247-decoding/tfs_pickling.py
+
+    Returns:
+        DataFrame: pickle contents returned as dataframe
+    """
+    print(f"Loading {file}")
+    with open(file, "rb") as fh:
+        datum = pickle.load(fh)
+    df = pd.DataFrame.from_dict(datum)
+    return df
