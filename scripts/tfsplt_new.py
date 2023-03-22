@@ -13,7 +13,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from tfsplt_utils import read_sig_file, read_folder, read_folder2
-from utils import main_timer
+from tfsplt_utils import main_timer
 
 
 # -----------------------------------------------------------------------------
@@ -182,9 +182,12 @@ def get_cmap_smap(args):
 
     # colors = [colorFader('#97baf7','#000308',i/col_len) for i in range(1,col_len)] # color gradient
 
-    # colors2 = [colorFader('#97baf7','#032661',i/col_len) for i in range(1,col_len)] # color gradient
+    col_len1 = 1 
+    colors_de = [colorFader('#00008B','#0000FF',i/col_len1) for i in range(1,col_len1+1)] # color gradient - BLUE
+    col_len2 = 1
+    colors_en = [colorFader('#FFA500','#8C000F',i/col_len2) for i in range(1,col_len2+1)] # color gradient - RED
     # colors1 = [colorFader('#f2b5b1','#6e0801',i/col_len) for i in range(1,col_len)]
-    # colors = colors1 + colors2
+    colors = colors_de + colors_en
     styles = ["-", "--", "-.", ":"]
     cmap = {}  # line color map
     smap = {}  # line style map

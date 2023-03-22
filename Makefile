@@ -1,6 +1,3 @@
-
-
-
 # TODO
 
 # create folders for datafiles on /projects
@@ -13,8 +10,6 @@
 
 
 # clean up plotting scripts (find the paralleled ones)
-
-
 
 ######################### commands from encoding Makefile #########################
 
@@ -33,6 +28,7 @@ PRJCT_ID := tfs
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
+SIG_FN := --sig-elec-file tfs-sig-file-625-Precentral-$$model-comp.csv tfs-sig-file-676-Precentral-$$model-comp.csv tfs-sig-file-798-Precentral-$$model-comp.csv tfs-sig-file-7170-Precentral-$$model-comp.csv
 # SIG_FN := --sig-elec-file test.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 # SIG_FN := --sig-elec-file colton625.csv colton625.csv
@@ -48,15 +44,15 @@ SIG_FN :=
 # SIG_FN := --sig-elec-file podcast_160.csv
 
 # Choose the lags to run for.
-LAGS := {400000..500000..100} # lag400500k-100
-LAGS := {-150000..150000..100} # lag60k-1k
-LAGS := {-500..500..5} # lag500-5
-LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
-LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
-LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
+# LAGS := {400000..500000..100} # lag400500k-100
+# LAGS := {-150000..150000..100} # lag60k-1k
+# LAGS := {-500..500..5} # lag500-5
+# LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
+# LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
+# LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
+# LAGS := {-2000..2000..25} # lag2k-25
 LAGS := {-10000..10000..25} # lag10k-25
-LAGS := {-2000..2000..25} # lag2k-25
-
+ 
 
 # -----------------------------------------------------------------------------
 # Plotting
@@ -114,33 +110,160 @@ LAG_TK_LABLS :=
 # Split by, if any (Choose how lines are split into plots) (Only effective when Split is not empty) (optional)
 # {  | --split-by labels | --split-by keys }
 
-PLT_PARAMS := --lc-by labels --ls-by keys # plot for just one key (podcast plots)
-PLT_PARAMS := --lc-by labels --ls-by keys --split horizontal --split-by keys # plot for prod+comp (247 plots)
+PLT_PARAMS := --ls-by labels --lc-by keys # plot for just one key (podcast plots)
+# PLT_PARAMS := --lc-by labels --ls-by keys --split horizontal --split-by keys # plot for prod+comp (247 plots)
 
 # Figure Size (width height)
-FIG_SZ:= 15 6
-FIG_SZ:= 18 10
+FIG_SZ:= 15 12
+
+ROI = Precentral
+KEY = comp
+
+# PARAMS FOR PLOTTING ROIS FOR DIFFERENT MODELS (SIG_FILES)
+MODELS := whisper-en-last-0.05
+KEYS := prod comp
+ROIS := IFG PFC OFC ATL STG MTG Precentral Postcentral SMG
+
+# folder name extensions
+FN := -w12
 
 # Note: if lc_by = labels, order formats by: glove (blue), gpt2 (orange), bbot decoder (green), fourth label (red)
-
 # Note: when providing sig elec files, provide them in the (sid keys) combination order \
 For instance, if sid = 625 676, keys = prod comp \
 sig elec files should be in this order: (625 prod)(625 comp)(676 prod)(676 comp) \
 The number of sig elec files should also equal # of sid * # of keys
 
+# plot-whisper-rois:
+# 	for model in $(MODELS); do \
+# 		for roi in $(ROIS); do \
+# 			for key in $(KEYS); do \
+# 				python scripts/tfsplt_whisper.py \
+# 					--sid 625 676 798 7170 \
+# 					--formats \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-samples/whisper-tiny.en-encoder-sh-samples-625-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-phonemes/whisper-tiny.en-encoder-sh-phonemes-625-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-words-7.5/whisper-tiny.en-encoder-sh-words-7.5-625-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-samples/whisper-tiny.en-encoder-sh-samples-676-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-phonemes/whisper-tiny.en-encoder-sh-phonemes-676-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-words-7.5/whisper-tiny.en-encoder-sh-words-7.5-676-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-samples/whisper-tiny.en-encoder-sh-samples-798-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-phonemes/whisper-tiny.en-encoder-sh-phonemes-798-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-words-7.5/whisper-tiny.en-encoder-sh-words-7.5-798-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-samples/whisper-tiny.en-encoder-sh-samples-7170-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-phonemes/whisper-tiny.en-encoder-sh-phonemes-7170-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-sh-words-7.5/whisper-tiny.en-encoder-sh-words-7.5-7170-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-4/*_%s.csv' \
+# 					--labels shuffle-samples shuffle-phonemes shuffle-words full-context-l4 shuffle-samples shuffle-phonemes shuffle-words full-context-l4 shuffle-samples shuffle-phonemes shuffle-words full-context-l4 shuffle-samples shuffle-phonemes shuffle-words full-context-l4 \
+# 					--model $$model \
+# 					--keys $$key \
+# 					--roi $$roi\
+# 					--sig-elec-file tfs-sig-file-625-$$roi-$$model-$$key.csv tfs-sig-file-676-$$roi-$$model-$$key.csv tfs-sig-file-798-$$roi-$$model-$$key.csv tfs-sig-file-7170-$$roi-$$model-$$key.csv  \
+# 					--fig-size $(FIG_SZ) \
+# 					--lags-plot $(LAGS_PLT) \
+# 					--lags-show $(LAGS_SHOW) \
+# 					--x-vals-show $(X_VALS_SHOW) \
+# 					$(LAG_TKS) \
+# 					$(LAG_TK_LABLS) \
+# 					$(PLT_PARAMS) \
+# 					--outfile results/figures/tfs-$$model-context-analysis-rois/tfs-$$roi-$$model-$$key.pdf; \
+# 			done; \
+# 		done; \
+# 	done;
 
-plot-new:
-	rm -f results/figures/*
-	python scripts/tfsplt_new.py \
-		--sid 625 \
+plot-whisper-rois:
+	for model in $(MODELS); do \
+		for roi in $(ROIS); do \
+			for key in $(KEYS); do \
+				python scripts/tfsplt_whisper.py \
+					--sid 625 676 798 7170 \
+					--formats \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-w12/whisper-tiny.en-encoder-w12-625-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-w12/whisper-tiny.en-encoder-w12-676-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-w12/whisper-tiny.en-encoder-w12-798-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder-w12/whisper-tiny.en-encoder-w12-7170-lag10k-25-all-4/*_%s.csv' \
+						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-4/*_%s.csv' \
+					--labels whisper-de whisper-en whisper-de whisper-en whisper-de whisper-en whisper-de whisper-en \
+					--model $$model \
+					--keys $$key \
+					--roi $$roi\
+					--sig-elec-file tfs-sig-file-625-$$roi-$$model-$$key.csv tfs-sig-file-676-$$roi-$$model-$$key.csv tfs-sig-file-798-$$roi-$$model-$$key.csv tfs-sig-file-7170-$$roi-$$model-$$key.csv  \
+					--fig-size $(FIG_SZ) \
+					--lags-plot $(LAGS_PLT) \
+					--lags-show $(LAGS_SHOW) \
+					--x-vals-show $(X_VALS_SHOW) \
+					$(LAG_TKS) \
+					$(LAG_TK_LABLS) \
+					$(PLT_PARAMS) \
+					--outfile results/figures/tfs-$$model$(FN)-rois/tfs-$$roi-$$model$(FN)-$$key.pdf; \
+			done; \
+		done; \
+	done;
+
+# plot-whisper-rois:
+# 	for model in $(MODELS); do \
+# 		for roi in $(ROIS); do \
+# 			for key in $(KEYS); do \
+# 				python scripts/tfsplt_whisper.py \
+# 					--sid 625 676 798 7170 \
+# 					--formats \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-625-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-1/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-2/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-676-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-1/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-2/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-798-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-1/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-2/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-4/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-7170-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-1/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-2/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-3/*_%s.csv' \
+# 						'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-4/*_%s.csv' \
+# 					--labels whisper-de-3 whisper-en-1 whisper-en-2 whisper-en-3 whisper-en-4 whisper-de-3 whisper-en-1 whisper-en-2 whisper-en-3 whisper-en-4 whisper-de-3 whisper-en-1 whisper-en-2 whisper-en-3 whisper-en-4 whisper-de-3 whisper-en-1 whisper-en-2 whisper-en-3 whisper-en-4 \
+# 					--model $$model \
+# 					--keys $$key \
+# 					--roi $$roi\
+# 					--sig-elec-file tfs-sig-file-625-$$roi-$$model-$$key.csv tfs-sig-file-676-$$roi-$$model-$$key.csv tfs-sig-file-798-$$roi-$$model-$$key.csv tfs-sig-file-7170-$$roi-$$model-$$key.csv  \
+# 					--fig-size $(FIG_SZ) \
+# 					--lags-plot $(LAGS_PLT) \
+# 					--lags-show $(LAGS_SHOW) \
+# 					--x-vals-show $(X_VALS_SHOW) \
+# 					$(LAG_TKS) \
+# 					$(LAG_TK_LABLS) \
+# 					$(PLT_PARAMS) \
+# 					--outfile results/figures/tfs-$$model-all-layers-rois/tfs-$$roi-$$model-all-layers-$$key.pdf; \
+# 			done; \
+# 		done; \
+# 	done;
+
+plot-whisper:
+	python scripts/tfsplt_whisper.py \
+		--sid 625 676 798 7170 \
 		--formats \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-ytes/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-ytes-yint/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-yint/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-test/*/*_%s.csv' \
-		--labels python python-ytes python-ytes-yint python-yint python-test \
-		--keys comp prod \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-625-lag10k-25-all-3/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-625-lag10k-25-all-4/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-676-lag10k-25-all-3/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-676-lag10k-25-all-4/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-798-lag10k-25-all-3/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-798-lag10k-25-all-4/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-7170-lag10k-25-all-3/*_%s.csv' \
+			'/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-7170-lag10k-25-all-4/*_%s.csv' \
+		--labels whisper-de-l3 whisper-en-l4 whisper-de-l3 whisper-en-l4 whisper-de-l3 whisper-en-l4 whisper-de-l3 whisper-en-l4 \
+		--keys $(KEY) \
+		--roi $(ROI)\
 		$(SIG_FN) \
 		--fig-size $(FIG_SZ) \
 		--lags-plot $(LAGS_PLT) \
@@ -149,7 +272,32 @@ plot-new:
 		$(LAG_TKS) \
 		$(LAG_TK_LABLS) \
 		$(PLT_PARAMS) \
-		--outfile results/figures/tfs-625-python-lm-compare.pdf
+		--outfile results/figures/tfs-all-rois/tfs-Precentral-all-comp.pdf
+
+plot-new:
+	rm -f results/figures/*
+	python scripts/tfsplt_new.py \
+		--sid 625 676 798 7170 \
+		--formats \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230210-whisper-encoder-onset/kw-tfs-full-en-onset-625-whisper-tiny.en-l4-wn1-5/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230212-whisper-decoder/kw-tfs-full-de-625-whisper-tiny.en-l3/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230210-whisper-encoder-onset/kw-tfs-full-en-onset-676-whisper-tiny.en-l4-wn1-5/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230212-whisper-decoder/kw-tfs-full-de-676-whisper-tiny.en-l3/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230210-whisper-encoder-onset/kw-tfs-full-en-onset-798-whisper-tiny.en-l4-wn1-5/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230212-whisper-decoder/kw-tfs-full-de-798-whisper-tiny.en-l3/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230210-whisper-encoder-onset/kw-tfs-full-en-onset-7170-whisper-tiny.en-l4-wn1-5/*/*_%s.csv' \
+			'/scratch/gpfs/kw1166/247-encoding/results/tfs/20230212-whisper-decoder/kw-tfs-full-de-7170-whisper-tiny.en-l3/*/*_%s.csv' \
+		--labels whisper-en-l4 whisper-de-l3 whisper-en-l4 whisper-de-l3 whisper-en-l4 whisper-de-l3 whisper-en-l4 whisper-de-l3 \
+		--keys comp prod\
+		$(SIG_FN) \
+		--fig-size $(FIG_SZ) \
+		--lags-plot $(LAGS_PLT) \
+		--lags-show $(LAGS_SHOW) \
+		--x-vals-show $(X_VALS_SHOW) \
+		$(LAG_TKS) \
+		$(LAG_TK_LABLS) \
+		$(PLT_PARAMS) \
+		--outfile results/figures/ROI_encoding/test.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results
 
 
