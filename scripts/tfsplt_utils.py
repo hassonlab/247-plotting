@@ -7,6 +7,8 @@ import pickle
 from multiprocessing import Pool
 from functools import partial
 from scipy import stats
+import matplotlib as mpl
+
 
 
 def read_sig_file(filename, old_results=False):
@@ -29,7 +31,7 @@ def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, mode, type):
     if (  # Skip electrodes if they're not part of the sig list
         len(sigelecs)
         and elec not in sigelecs[sigelecs_key]
-        and "whole_brain" not in sigelecs_key
+        # and "whole_brain" not in sigelecs_key
     ):
         return None
     # if 'LGA' not in elec and 'LGB' not in elec: # for 717, only grid
@@ -79,14 +81,14 @@ def read_folder(
     label="label",
     mode="mode",
     type="all",
-    parallel=False,
+    parallel=True,
 ):
 
     files = glob.glob(fname)
     assert (
         len(files) > 0
     ), f"No results found under {fname}"  # check files exist under format
-
+    
     if parallel:
         p = Pool(10)
         for result in p.map(
@@ -120,7 +122,7 @@ def read_folder(
     return data
 
 
-def load_pickle(file):
+def load_pickle(file, key = None):
     """Load the datum pickle and returns as a dataframe
 
     Args:
@@ -132,5 +134,25 @@ def load_pickle(file):
     print(f"Loading {file}")
     with open(file, "rb") as fh:
         datum = pickle.load(fh)
-    df = pd.DataFrame.from_dict(datum)
+    
+    if key:
+        df = pd.DataFrame.from_dict(datum[key])
+    else:
+        df = pd.DataFrame.from_dict(datum)
     return df
+
+
+def colorFader(c1, c2, mix):
+    """Get color in between two colors (based on linear interpolate)
+
+    Args:
+        c1: color 1 in hex format
+        c2: color 2 in hex format
+        mix: percentage between two colors (0 is c1, 1 is c2)
+
+    Returns:
+        a color in hex format
+    """
+    c1 = np.array(mpl.colors.to_rgb(c1))
+    c2 = np.array(mpl.colors.to_rgb(c2))
+    return mpl.colors.to_hex((1 - mix) * c1 + mix * c2)
