@@ -59,13 +59,14 @@ import socket
 ###############################################################################################
 
 #TODO:
+# The sizing is right for the average brain, but it doesn't translate to individual patient brains.
 elec_type = "All" #elec_type = "G", "EG", "S", "D"
 cbar_visibility = True
 
 # Required arguments:
 id = ['625','676','717','798']
-effect_file = ["tfs_ave_whisper-en-last-0.01_prod_sig_withCoor.csv"]
-coor_in_effect_file = 1
+effect_file = ["maxEnc.csv"]
+coor_in_effect_file = 0
 cbar_titles = ['corr']
 outname = "test_figure.png"
 
@@ -99,7 +100,7 @@ def load_surf(path,id):
     if len(id) > 1:
         file = glob.glob(os.path.join(path, "*.mat"))
     else:
-        file = glob.glob(os.path.join(path, "NYUdownload", "NY" + id + "*.mat"))
+        file = glob.glob(os.path.join(path, id[0], "NYUdownload", "NY" + id[0] + "*.mat"))
     
     # if one hemisphere
     if len(file) == 1:
@@ -233,7 +234,7 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
     fig = plot_brain(surf1, surf2)
 
     if coor_in_effect_file == 0:
-        df_corr = read_coor(path,id)
+        df_coor = read_coor(path,id)
 
     for subset, cbar_title in enumerate(cbar_titles):
         
@@ -251,7 +252,7 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
         else:
             # Filter electrodes to plot
             df_coor = df_coor[df_coor.name_NYUcoor.isin(df_eff.name)]
-            fignew = plot_electrodes(df_coor.name_NYUcoor,df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
+            fignew = plot_electrodes(df_eff['index'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
                 cbar_title,colorscale)
             
         fignew = scale_colorbar(fignew, df_eff, cbar_min, cbar_max, cbar_title)
