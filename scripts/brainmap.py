@@ -52,7 +52,7 @@ import socket
             # Position 0 (bottom) and 1 (top) required. 
             # Additional center values allow for multiple colorscales in one colobar.           
     # Ex: Define one colorbar from blue to white to red
-        # [[0,'rgb(0,0,255)'], [0.5,'rgb(255,255,255)'], [1,'rgb(255,0,0)']]
+        # {cbar_titles[0]:[[0,'rgb(0,0,255)'], [0.5,'rgb(255,255,255)'], [1,'rgb(255,0,0)']]}
     # Ex: Define 2 colorbars from light green to green and light purple to purple
         # {cbar_titles[0]:[[0,'rgb(255,248,240)'],[1,'rgb(255,0,0)']], 
         # cbar_titles[1]:[[0,'rgb(240,248,255)'],[1,'rgb(0,0,255)']]}
@@ -192,10 +192,9 @@ def electrode_colors(fignew, df, subset):
     # Once max, min of colorbar is set, you can just use the value you want to plot (e.g. correlation) to determine the coloring,
     # must be in array the same shape as z data
     if subset > 0:
-        fignew.update_traces(colorbar_x= 1 + 0.2*subset)
+        fignew.update_traces(colorbar_x = 1 + 0.2*subset)
     for elec_idx in range(0,len(fignew.data)):
-         df['index'] = df['index'].apply(str)
-         effect = df["effect"][df.index[df["index"] == fignew.data[elec_idx]["name"]]].tolist()
+         effect = df["effect"][df.index[df["name"] == fignew.data[elec_idx]["name"]]].tolist()
          fignew.data[elec_idx]["surfacecolor"] = fignew.data[elec_idx]["surfacecolor"] * effect
 
     return fignew
@@ -251,8 +250,8 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
                 cbar_title,colorscale)
         else:
             # Filter electrodes to plot
-            df_coor = df_coor[df_coor.name_NYUcoor.isin(df_eff.name)]
-            fignew = plot_electrodes(df_eff['index'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
+            df_coor = df_coor[df_coor.name.isin(df_eff.name)]
+            fignew = plot_electrodes(df_coor['name'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
                 cbar_title,colorscale)
             
         fignew = scale_colorbar(fignew, df_eff, cbar_min, cbar_max, cbar_title)
