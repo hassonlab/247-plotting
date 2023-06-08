@@ -64,8 +64,8 @@ elec_type = "All" #elec_type = "G", "EG", "S", "D"
 cbar_visibility = True
 
 # Required arguments:
-id = ['625','676','717','798']
-effect_file = ["maxEnc.csv"]
+id = ['625']
+effect_file = ["glove_aph_prod.csv"]
 coor_in_effect_file = 0
 cbar_titles = ['corr']
 outname = "test_figure.png"
@@ -124,6 +124,7 @@ def read_coor(path,id):
         sid_path = os.path.join(path, sid)
         file = os.path.join(sid_path, sid + "-electrode-coordinates.csv")
         df = pd.read_csv(file)
+        df['subject'] = sid
         df_coor = df_coor.append(df)
 
     return df_coor
@@ -194,7 +195,7 @@ def electrode_colors(fignew, df, subset):
     if subset > 0:
         fignew.update_traces(colorbar_x = 1 + 0.2*subset)
     for elec_idx in range(0,len(fignew.data)):
-         effect = df["effect"][df.index[df["name"] == fignew.data[elec_idx]["name"]]].tolist()
+         effect = df["effect"][df.index[df["subject"]+df["name"] == fignew.data[elec_idx]["name"]]].tolist()
          fignew.data[elec_idx]["surfacecolor"] = fignew.data[elec_idx]["surfacecolor"] * effect
 
     return fignew
@@ -244,6 +245,8 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
 
         eff_file = os.path.join(main_dir + "results/brain_maps/effects/" + effect_file[subset])
         df_eff = pd.read_csv(eff_file)
+        df_eff['subject'] = df_eff['subject'].astype("string")
+
         if 'MNI_X' in df_eff.columns:
             df_coor = df_eff
             fignew = plot_electrodes(df_coor['index'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
@@ -251,7 +254,7 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
         else:
             # Filter electrodes to plot
             df_coor = df_coor[df_coor.name.isin(df_eff.name)]
-            fignew = plot_electrodes(df_coor['name'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
+            fignew = plot_electrodes(df_coor['subject'] + df_coor['name'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
                 cbar_title,colorscale)
             
         fignew = scale_colorbar(fignew, df_eff, cbar_min, cbar_max, cbar_title)
