@@ -10,7 +10,6 @@ from tfsplt_utils import read_folder, colorFader
 
 
 def main():
-
     ##### Encoding Results Folder #####
     layers = np.arange(0, 25)
 
@@ -18,13 +17,13 @@ def main():
     for layer in layers:
         format[
             f"whisper-en-{layer:02d}"
-        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/kw-podcast-full-777-whisper-medium.en-encoder-new-lag5k-25-all-{layer}/*/*_comp.csv"
+        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/20230411-ccn/kw-podcast-full-777-whisper-medium.en-encoder-new-lag5k-25-all-{layer}/*/*_comp.csv"
         format[
             f"whisper-de-{layer:02d}"
-        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/kw-podcast-full-777-whisper-medium.en-decoder-lag5k-25-all-{layer}/*/*_comp.csv"
+        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/20230411-ccn/kw-podcast-full-777-whisper-medium.en-decoder-lag5k-25-all-{layer}/*/*_comp.csv"
         format[
             f"gpt2-medium-{layer:02d}"
-        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/kw-podcast-full-777-gpt2-medium-lag5k-25-all-shift-emb-118-{layer}/*/*_comp.csv"
+        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/20230411-ccn/kw-podcast-full-777-gpt2-medium-lag5k-25-all-shift-emb-118-{layer}/*/*_comp.csv"
 
     sig_elecs = {}
     areas = {
@@ -40,11 +39,9 @@ def main():
     for _, val in areas.items():
         for emb in embs:
             sig_key = f"{emb}{val}"
-            sig_path = f"data/plotting/ccn-sig-file-{sig_key}.csv"
+            sig_path = f"data/plotting/20230405-ccn/ccn-sig-file-{sig_key}.csv"
             sig_file = pd.read_csv(sig_path)
-            sig_file["elec"] = (
-                sig_file.subject.astype(str) + "_" + sig_file.electrode
-            )
+            sig_file["elec"] = sig_file.subject.astype(str) + "_" + sig_file.electrode
             sig_elecs[sig_key] = sig_file.elec.tolist()
 
     # pdf_name = "max-cor-layers-max-118-aligned.pdf"
@@ -52,7 +49,7 @@ def main():
     # SMALL_SIZE = 20
     # plt.rc("font", size=SMALL_SIZE)
     # plt.rc("axes", titlesize=SMALL_SIZE)
-    save_df = pd.DataFrame({'Layer':layers})
+    save_df = pd.DataFrame({"Layer": layers})
     plt.style.use("/scratch/gpfs/ln1144/247-plotting/scripts/paper.mlpstyle")
     for area, area_tag in areas.items():
         print(f"{area}")
@@ -100,23 +97,24 @@ def main():
             medium_layers,
             s=20,
             marker="o",
-            color='grey',
+            color="grey",
             # facecolors="none",
             # edgecolors="grey",
         )
         ax.scatter(layers, en_layers, s=20, color=colors, marker="o")
-        model = LinearRegression().fit(layers[1:].reshape((-1, 1)),en_layers[1:])
+        model = LinearRegression().fit(layers[1:].reshape((-1, 1)), en_layers[1:])
         slope = model.coef_[0]
         print("Slope", slope * 100)
         ax.set(
             xlabel="Layers",
             ylabel="Max Correlation (r)",
             # title=f"{area}(en:{en_elecs},de:{de_elecs},gpt2:{gpt2_elecs})",
-            title=f"{area}(encoder:{en_elecs},gpt2:{gpt2_elecs},slope:{slope})",
+            # title=f"{area}(encoder:{en_elecs},gpt2:{gpt2_elecs},slope:{slope})",
+            title=f"{area}",
         )
         # if "-aligned" in pdf_name:
-            # ax.set_ylim(0,0.34)
-        ax.set_ylim(0,0.45)
+        # ax.set_ylim(0,0.34)
+        ax.set_ylim(0, 0.45)
         # pdf.savefig(fig)
         plt.savefig(f"winter_{area}.svg")
         plt.close()

@@ -139,19 +139,6 @@ def load_pickle(file, key=None):
     return df
 
 
-def save_pickle(item, file_name):
-    """Write 'item' to 'file_name.pkl'"""
-    add_ext = "" if file_name.endswith(".pkl") else ".pkl"
-
-    file_name = file_name + add_ext
-
-    os.makedirs(os.path.dirname(file_name), exist_ok=True)
-
-    with open(file_name, "wb") as fh:
-        pickle.dump(item, fh)
-    return
-
-
 def colorFader(c1, c2, mix):
     """Get color in between two colors (based on linear interpolate)
 

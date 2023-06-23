@@ -22,7 +22,7 @@ Will slowly clean up stuff
     - max, min limits
 
 - Encoding
-  - `tfsplt_color.ipynb` testing colors
+  - `test_color.ipynb` testing colors
   - `tfsplt_main.ipynb` usual encoding
   - To Do:
     - usual encoding
