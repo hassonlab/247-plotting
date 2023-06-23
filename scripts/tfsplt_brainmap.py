@@ -1,350 +1,274 @@
-import os
 import glob
-import numpy as np
+import os
 import pandas as pd
-import matplotlib.pyplot as plt
+from scipy.io import loadmat
+import plotly.graph_objects as go
+import numpy as np
+import plotly.io as pio
+import socket
 
-path = "/scratch/gpfs/ln1144/247-plotting"
-os.chdir(path)
+# Arguments
+###############################################################################################
 
-############################
-###### Core Arguments ######
-############################
+###############################################################################################
+# Required Arguments:
+# id: List of subject(s) to plot
+    # if 1 subject given, plot with T1 coordinates on patient specific brain
+    # if >1 subject given, plot with MNI corrdinates on average brain
+    # Ex.: ['625']
+    # Ex.: ['625','676','717','798'] 
 
-# PRJ_ID = "podcast"
-PRJ_ID = "tfs"
+# effect_file: List of file name(s) containing the effect values to plot
+    # Ex.: ["tfs_ave_whisper-en-last-0.01_prod_sig_withCoor.csv"]
+    # Ex.: ["tfs_ave_whisper-en-last-whisper-de-best-contrast-0.01_prod_sig_withCoor_pos.csv",
+    #           "tfs_ave_whisper-en-last-whisper-de-best-contrast-0.01_prod_sig_withCoor_neg.csv"]
 
-#HACK
-AGGREGATE = True
-GET_RESULTS = False
+# coor_in_effect_file: Plot using coordinates from effect file, 1/0 TODO: change this
 
-# SIDS = [625] # for testing / 1 patient
-SIDS = [625, 676, 7170, 798]
+# cbar_titles: List of title(s) for colorbar(s)
+    # Ex.: ["correlation"]
+    # Ex.: ["A", "B"]
 
-KEYS = ["prod", "comp"]
+# outname: File name for saving plot
+    # Ex.: "test_figure.png"
+    # Ex.: "test_figure.svg"
+###############################################################################################
 
-MODELS = ["whisper-en-last", "whisper-de-last"]
+###############################################################################################
+# Optional Arguments:
+# cbar_max: Maximum value on colorbar
+    # Default = max effect value from file(s) in 'effect_file'
+    # NOTE: Effect value cannot be greater than cbar_max
 
-# COR_TYPE = "ind" # unique brain coordinate + brain map per patient
-COR_TYPE = "ave" # average brain coordinates (for several patients)
+# cbar_min: Minimum value on colorbar
+    # Default = min effect value from files(s) in 'effect_file'
+    # NOTE: Effect value cannot be less than cbar_min
 
-##### Encoding Results Folder #####
-FORMATS = []
-for sid in SIDS:
-    FORMATS.append(
-        {
-    "whisper-en-last" : f"/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-encoder/whisper-tiny.en-encoder-{sid}-lag10k-25-all-4/",
-    "whisper-de-best" : f"/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-{sid}-lag10k-25-all-3/",
-    "whisper-de-last" : f"/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/whisper-tiny.en-decoder/whisper-tiny.en-decoder-{sid}-lag10k-25-all-4/",
-    # "whisper-full-last" : f"tfs/20230216-whisper-full/kw-tfs-full-{sid}-whisper-tiny.en-l4/*/",
-    # "whisper-full-best" : f"tfs/20230216-whisper-full/kw-tfs-full-{sid}-whisper-tiny.en-l3/*/",
-        }
+# colorscales: Colorscale(s) used to color electrodes
+    # Defulat = yellow to red
+    # TODO: default for multiple colorbars
+    # If 1 colorbar: List of position, rgb color vector pairs
+    # If >1 colorbar: Dictionary containing lists of position, rgb color vector pairs
+            # Position 0 (bottom) and 1 (top) required. 
+            # Additional center values allow for multiple colorscales in one colobar.           
+    # Ex: Define one colorbar from blue to white to red
+        # {cbar_titles[0]:[[0,'rgb(0,0,255)'], [0.5,'rgb(255,255,255)'], [1,'rgb(255,0,0)']]}
+    # Ex: Define 2 colorbars from light green to green and light purple to purple
+        # {cbar_titles[0]:[[0,'rgb(255,248,240)'],[1,'rgb(255,0,0)']], 
+        # cbar_titles[1]:[[0,'rgb(240,248,255)'],[1,'rgb(0,0,255)']]}
+###############################################################################################
+
+#TODO:
+# The sizing is right for the average brain, but it doesn't translate to individual patient brains.
+elec_type = "All" #elec_type = "G", "EG", "S", "D"
+cbar_visibility = True
+
+# Required arguments:
+id = ['625']
+effect_file = ["glove_aph_prod.csv"]
+coor_in_effect_file = 0
+cbar_titles = ['corr']
+outname = "test_figure.png"
+
+# Optional arguments:
+cbar_max = None
+cbar_min = None
+colorscales = None
+
+def set_args(id):
+
+    host = socket.gethostname()
+    if host == "della":
+        print("Data path for host: della is not known. Please add it to the set_args function.")
+        main_dir = ""
+    elif host == "scotty":
+        main_dir = "/mnt/cup/labs/hasson/ariel/MainDir/247/"
+    else:
+        main_dir = "/Volumes/hasson/ariel/MainDir/247/"
+    
+
+    if len(id) > 1:
+        coor_type = "MNI"
+    else:
+        coor_type = "T1"
+
+    return main_dir, coor_type
+
+# loading brain surface plot
+def load_surf(path,id):
+
+    if len(id) > 1:
+        file = glob.glob(os.path.join(path, "*.mat"))
+    else:
+        file = glob.glob(os.path.join(path, id[0], "NYUdownload", "NY" + id[0] + "*.mat"))
+    
+    # if one hemisphere
+    if len(file) == 1:
+        file = ''.join(file)
+        surf1 = loadmat(file)
+        surf2 = []
+    # if both hemispheres
+    elif len(file) == 2:
+        file1 = ''.join(file[0])
+        file2 = ''.join(file[1])
+        surf1 = loadmat(file1)
+        surf2 = loadmat(file2)
+
+    return surf1, surf2
+
+# reading electrode coordinates
+def read_coor(path,id):
+
+    df_coor = pd.DataFrame()
+    for sid in id:
+        sid_path = os.path.join(path, sid)
+        file = os.path.join(sid_path, sid + "-electrode-coordinates.csv")
+        df = pd.read_csv(file)
+        df['subject'] = sid
+        df_coor = df_coor.append(df)
+
+    return df_coor
+
+# plot 3D brain
+def plot_brain(surf1, surf2):
+
+    # surf["faces"] is an n x 3 matrix of indices into surf["coords"]; connectivity matrix
+    # Subtract 1 from every index to convert MATLAB indexing to Python indexing
+    surf1["faces"] = np.array([conn_idx - 1 for conn_idx in surf1["faces"]])
+
+    # Plot 3D surfact plot of brain, colored according to depth
+    fig = go.Figure()
+
+    fig.add_trace(go.Mesh3d(x=surf1["coords"][:,0], y=surf1["coords"][:,1], z=surf1["coords"][:,2],
+                     i=surf1["faces"][:,0], j=surf1["faces"][:,1], k=surf1["faces"][:,2],
+                     color='rgb(175,175,175)'))
+    
+    # if both hemispheres
+    if surf2:
+        surf2["faces"] = np.array([conn_idx - 1 for conn_idx in surf2["faces"]])
+
+        fig.add_trace(go.Mesh3d(x=surf2["coords"][:,0], y=surf2["coords"][:,1], z=surf2["coords"][:,2],
+                          i=surf2["faces"][:,0], j=surf2["faces"][:,1], k=surf2["faces"][:,2],
+                          color="rgb(175,175,175)"))
+
+    fig.update_traces(lighting_ambient=0.3)
+    return fig
+
+# plot 3D electrodes
+def plot_electrodes(elec_names,X,Y,Z,cbar_title,colorscale):
+
+    r = 1.5
+    fignew = go.Figure()
+    for elecname,center_x,center_y,center_z in zip(elec_names,X,Y,Z):
+        u, v = np.mgrid[0:2*np.pi:26j, 0:np.pi:26j]
+        x = r * np.cos(u)*np.sin(v) + center_x
+        y = r * np.sin(u)*np.sin(v) + center_y
+        z = r * np.cos(v) + center_z
+
+        fignew.add_trace(go.Surface(x=x,y=y,z=z,surfacecolor=np.ones(shape=z.shape),name=elecname,
+                      legendgroup=cbar_title,colorscale=colorscale))
+    
+    return fignew
+
+# Set min/max of colorbar
+def scale_colorbar(fignew, df, cbar_min, cbar_max, cbar_title):
+
+    if cbar_min is not None:
+        cmin = cbar_min
+    else:
+        cmin = df["effect"].min()
+
+    if cbar_max is not None:
+        cmax = cbar_max
+    else:
+        cmax = df["effect"].max()
+    fignew.update_traces(cmin=cmin,cmax=cmax,colorbar_title=cbar_title,
+                         colorbar_title_font_size=40,colorbar_title_side='right')
+    
+    return fignew
+    
+# Color electrodes according to effect
+def electrode_colors(fignew, df, subset):
+
+    # Once max, min of colorbar is set, you can just use the value you want to plot (e.g. correlation) to determine the coloring,
+    # must be in array the same shape as z data
+    if subset > 0:
+        fignew.update_traces(colorbar_x = 1 + 0.2*subset)
+    for elec_idx in range(0,len(fignew.data)):
+         effect = df["effect"][df.index[df["subject"]+df["name"] == fignew.data[elec_idx]["name"]]].tolist()
+         fignew.data[elec_idx]["surfacecolor"] = fignew.data[elec_idx]["surfacecolor"] * effect
+
+    return fignew
+
+def update_properties(fig):
+
+    # Left hemisphere
+    # TODO: add camera for other views
+    camera = dict(
+        up=dict(x=0, y=0, z=1),
+        center=dict(x=0, y=0, z=0),
+        eye=dict(x=-1.5, y=0, z=0)
     )
 
-# Output directory name
-# OUTPUT_DIR = "results/cor-tfs-area-diff-after"
-# OUTPUT_DIR = "results/cor-tfs-max-diff"
-# OUTPUT_DIR = "results/cor-tfs-area-diff-before"
-# OUTPUT_DIR = "results/cor-tfs-max"
-OUTPUT_DIR = "results/cor-tfs-max-diff-prod-comp"
+    scene = dict(
+        xaxis = dict(visible=False),
+        yaxis = dict(visible=False),
+        zaxis = dict(visible=False),
+        aspectmode='auto'
+    )
 
-# AREA lags (used for add_area)
-LAGS = np.arange(-10000,10025,25)
-AREA_START = -500
-AREA_END = -100
+    fig.update_layout(scene_camera=camera,scene=scene)
+    fig.update_traces(lighting_specular=0.4,colorbar_thickness=40,colorbar_tickfont_size=30,
+                      lighting_roughness=0.4,lightposition=dict(x=0, y=0, z=100))
 
-INPUT_DIR = OUTPUT_DIR
+    return fig
 
-# whether to use significance list
-# SIG_ELECS = False
-SIG_ELECS = True # only sig elecs
+def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_in_effect_file):
+    #id = sys.argv[1]
+    #eff_file_name = sys.argv[2]
 
-if "cor-tfs-max" in INPUT_DIR: # significance dict for max cor
-    SIG_DICT = {
-        # "whisper-en-last-0.05": "whisper-en-last-0.05",
-        # "whisper-en-last-0.01": "whisper-en-last-0.01",
-        # "whisper-de-best-0.05": "whisper-de-best-0.05",
-        # "whisper-de-best-0.01": "whisper-de-best-0.01",
-        # "whisper-de-last-0.05": "whisper-de-last-0.05",
-        # "whisper-de-last-0.01": "whisper-de-last-0.01",
-        # "whisper-en-de-best-contrast-0.05": "whisper-en-de-best-contrast-0.05",
-        # "whisper-en-de-best-contrast-0.01": "whisper-en-de-best-contrast-0.01",
-        # "whisper-en-de-last-contrast-0.05": "whisper-en-de-last-contrast-0.05",
-        # "whisper-en-de-last-contrast-0.01": "whisper-en-de-last-contrast-0.01",
-        "whisper-en-last-prod-comp-contrast-0.05": "whisper-en-last-prod-comp-contrast-0.05",
-        "whisper-en-last-prod-comp-contrast-0.01": "whisper-en-last-prod-comp-contrast-0.01",
-        "whisper-de-best-prod-comp-contrast-0.05": "whisper-de-best-prod-comp-contrast-0.05",
-        "whisper-de-best-prod-comp-contrast-0.01": "whisper-de-best-prod-comp-contrast-0.01",
-        "whisper-de-last-prod-comp-contrast-0.05": "whisper-de-last-prod-comp-contrast-0.05",
-        "whisper-de-last-prod-comp-contrast-0.01": "whisper-de-last-prod-comp-contrast-0.01"
-    }
-elif "cor-tfs-area" in INPUT_DIR: # significance dict for area
-    SIG_DICT = {}
-
-def get_base_df(sid, cor, emb_key):
-
-    # Get brain coordinate file
-    coordinatefilename = f"data/plotting/brainplot/{sid}_{cor}.txt"
-
-    data = pd.read_csv(coordinatefilename, sep=" ", header=None)
-    data = data.set_index(0)
-    data = data.loc[:, 1:4]
-    print(f"\nFor subject {sid}:\ntxt has {len(data.index)} electrodes")
-
-    # Get electrode name conversion file
-    elecfilename = f"data/plotting/brainplot/{sid}_elecs.csv"
-    elecs = pd.read_csv(elecfilename)
-    elecs = elecs.dropna()
-    elecs = elecs.rename(columns={"elec2": 0})
-    elecs.set_index(0, inplace=True)
-
-    df = pd.merge(data, elecs, left_index=True, right_index=True)
-    print(f"Now subject has {len(df)} electrodes")
+    main_dir, coor_type = set_args(id)
+    path = os.path.join(main_dir,"ecog_coordinates")
     
-    # Create filler columns
-    for col in emb_key:
-        df[col] = -1
+    surf1, surf2 = load_surf(path, id)
+    fig = plot_brain(surf1, surf2)
 
-    return df
+    if coor_in_effect_file == 0:
+        df_coor = read_coor(path,id)
 
-def read_file(filename, path):
-    # Read in one electrode encoding correlation results
-    filename = os.path.join("data/encoding/",path, filename)
-    # breakpoint()
-    if len(glob.glob(filename)) == 1:
-        filename = glob.glob(filename)[0]
-    elif len(glob.glob(filename)) == 0:
-        return -1
-    else:
-        AssertionError("huh this shouldn't happen")
-    elec_data = pd.read_csv(filename, header=None)
-    return elec_data
+    for subset, cbar_title in enumerate(cbar_titles):
+        
+        if colorscales is None:
+            colorscale = [[0,'rgb(255,0,0)'], [1,'rgb(255,255,0)']]
+        else:
+            colorscale = colorscales[cbar_title] 
 
-def get_max(filename, path):
-    
-    # get max correlation for one electrode file
-    fn = os.path.join(path,filename)
+        eff_file = os.path.join(main_dir + "results/brain_maps/effects/" + effect_file[subset])
+        df_eff = pd.read_csv(eff_file)
+        df_eff['subject'] = df_eff['subject'].astype("string")
 
-    #HACK
-    try:
-        elec_data = pd.read_csv(fn)
-        max = elec_data.avg.max()
-    except:
-        max = -1
-    
-    return max
-
-def get_area(filename, path, lags, chosen_lags):
-    # get area under the curve for one electrode file
-    elec_data = read_file(filename, path)
-    if isinstance(elec_data, int):
-        return -1
-    elec_data = elec_data.loc[:, chosen_lags]
-    x_vals = [lags[lag] / 1000 for lag in chosen_lags]
-
-    return np.trapz(elec_data, x=x_vals, axis=1)  # integration
-
-def add_encoding(df, sid, formats, type="max", lags = [], chosen_lags=[]):
-    
-    for format in formats:
-        print(f"getting results for {format} embedding")
-        for row, values in df.iterrows():
-            col_name1 = format + "_prod"
-            col_name2 = format + "_comp"
-            #HACK
-            #prod_name = f"{sid}_{values['elec']}_all_folds_prod.csv
-            prod_name = f"{sid}_{values['elec']}_prod.csv"
-            #HACK
-            #comp_name = f"{sid}_{values['elec']}_all_folds_comp.csv"
-            comp_name = f"{sid}_{values['elec']}_comp.csv"
-            if type == "max":
-                df.loc[row, col_name1] = get_max(prod_name, formats[format])
-                df.loc[row, col_name2] = get_max(comp_name, formats[format])
-            elif type == "area":
-                df.loc[row, col_name1] = get_area(prod_name, formats[format], lags, chosen_lags)
-                df.loc[row, col_name2] = get_area(comp_name, formats[format], lags, chosen_lags)
-    return df
-
-def get_area_diff(df, emb_key, mode="normalized"):
-    for col in emb_key:
-        if "incorrect" in col or "bot" in col: # incorrect column
-            pass
-        else: # correct column
-            # get column names
-            col2 = col.replace("correct", "incorrect") # incorrect column
-            col2 = col2.replace("top", "bot") # bot column
-            diff_col = col.replace("correct","")
-            diff_col = diff_col.replace("top","")
-
-            # normalized area diff
-            df.loc[df[col] < 0, col] = 0  # turn negative area to 0
-            df.loc[df[col2] < 0, col2] = 0  # turn negative area to 0
-            if mode == "normalized": # normalized area diff
-                df.loc[:,diff_col] = (df[col] - df[col2]) / df[[col, col2]].max(axis=1)
-            elif mode == "normalized2": # area diff normalized
-                df.loc[:,diff_col] = df[col] - df[col2]
-                abs_max = max(abs(df.loc[:,diff_col].max()),abs(df.loc[:,diff_col].min()))
-                df.loc[:,diff_col] = df.loc[:,diff_col] / abs_max
-            elif mode == "none":
-                df.loc[:,diff_col] = df[col] - df[col2]
-            df.drop([col, col2], axis=1, inplace=True) # drop original columns
-
-    return df
-
-def save_file(df, sid, emb_keys, dir, cor, project):
-    df.loc[:,0] = df.index
-
-    for col in emb_keys:
-        sid_file = os.path.join(dir, f"{sid}_{cor}_{col}.txt")
-        # sids_file = os.path.join(dir, f"{project}_{cor}_{col}.txt")
-        df_output = df.loc[:, [0, 1, 2, 3, 4, "elec", col]]
-        df_output.dropna(inplace=True)
-        df_output.to_csv(sid_file,index=False, header=False)
+        if 'MNI_X' in df_eff.columns:
+            df_coor = df_eff
+            fignew = plot_electrodes(df_coor['index'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
+                cbar_title,colorscale)
+        else:
+            # Filter electrodes to plot
+            df_coor = df_coor[df_coor.name.isin(df_eff.name)]
+            fignew = plot_electrodes(df_coor['subject'] + df_coor['name'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
+                cbar_title,colorscale)
             
-    return
-
-def aggregate_results(input_dir, sids, cor_type, emb_name, key, sig_name):
-
-    model1 = MODELS[0]
-    model2 = MODELS[1]
-
-    df_all = pd.DataFrame()
-    
-    for sid in sids:
-        # load coordinate file
-        if OUTPUT_DIR == "results/cor-tfs-max":
-            model_name  = emb_name[:-5]
-            cor_filename = os.path.join(input_dir,f"{sid}_{cor_type}_{model_name}_{key}.txt")
-        elif OUTPUT_DIR == "results/cor-tfs-max-diff":
-            cor_filename = os.path.join(input_dir,f"{sid}_{cor_type}_{model1}-{model2}-contrast_{key}.txt")
-        elif OUTPUT_DIR == "results/cor-tfs-max-diff-prod-comp":
-            model_name  = emb_name[:-5]
-            cor_filename = os.path.join(input_dir,f"{sid}_{cor_type}_{model_name}.txt")
+        fignew = scale_colorbar(fignew, df_eff, cbar_min, cbar_max, cbar_title)
+        fignew = electrode_colors(fignew, df_eff, subset)
         
-        df = pd.read_csv(cor_filename,names=["1","2","3","4","5","electrode","effect"])
+        # Add electrode traces to main figure
+        for trace in range(0,len(fignew.data)):
+            fig.add_trace(fignew.data[trace])
 
-        # load significance file
-        if sig_name:
-            if OUTPUT_DIR == "results/cor-tfs-max":
-                sig_filename = os.path.join("data/plotting/google-tfs-sig-files",f"tfs-sig-file-{sid}-{sig_name}-{key}.csv")
-            elif OUTPUT_DIR == "results/cor-tfs-max-diff":
-                sig_filename = os.path.join("data/plotting/google-tfs-sig-files",f"tfs-sig-file-{sid}-{sig_name}-{key}.csv")
-            elif OUTPUT_DIR == "results/cor-tfs-max-diff-prod-comp":
-                sig_filename = os.path.join("data/plotting/google-tfs-sig-files",f"tfs-sig-file-{sid}-{sig_name}.csv")
-  
-            sig_df = pd.read_csv(sig_filename)
-            df = pd.merge(df, sig_df, how='inner', left_on="electrode", right_on="electrode")
-        
-        # aggregate
-        df_all = pd.concat([df_all,df])
-        df_all.drop_duplicates(inplace=True)
-        
-    # save aggregate file
-    df_output = df_all.loc[:, ["1","2","3","4","5","effect"]]
-    sig_str = "_sig"
-    if sig_name is None:
-        sig_str = ""
-    if OUTPUT_DIR == "results/cor-tfs-max":
-        aggre_filename = os.path.join(input_dir,f"tfs_{cor_type}_{emb_name}_{key}{sig_str}.txt")
-    elif OUTPUT_DIR == "results/cor-tfs-max-diff":
-        sig_id = sig_name[-4:]
-        aggre_filename = os.path.join(input_dir,f"tfs_{cor_type}_{model1}-{model2}-contrast-{sig_id}_{key}{sig_str}.txt")
-    elif OUTPUT_DIR == "results/cor-tfs-max-diff-prod-comp":
-        aggre_filename = os.path.join(input_dir,f"tfs_{cor_type}_{emb_name}{sig_str}.txt")
+    fig = update_properties(fig)
 
-    df_output.to_csv(aggre_filename, index=False, header=False)
+    fig.write_image(outname, scale=6, width=1200, height=1000)
 
     return
 
-#############################
-## GET RESULTS PER PATIENT ##
-#############################
-
-if GET_RESULTS:
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-
-    ##### Max correlation #####
-    if OUTPUT_DIR == "results/cor-tfs-max":
-        for sid, format in zip(SIDS, FORMATS):
-            emb_key = [emb + "_" + key for emb in format.keys() for key in KEYS]
-            df = get_base_df(sid, COR_TYPE, emb_key) # get all electrodes
-            df = add_encoding(df, sid, format, "max") # add on the columns from encoding results
-            save_file(df, sid, emb_key, OUTPUT_DIR, COR_TYPE, PRJ_ID) # save txt files
-
-    ##### Difference between max correlation #####
-    elif OUTPUT_DIR == "results/cor-tfs-max-diff":
-        for sid in SIDS:
-            for key in KEYS:
-
-                model1 = MODELS[0]
-                model2 = MODELS[1]
-                
-                f1 = f"results/cor-tfs-max/{sid}_ave_{model1}_{key}.txt"
-                f2 = f"results/cor-tfs-max/{sid}_ave_{model2}_{key}.txt"
-
-                df_1 = pd.read_csv(f1,names=["electrode","1","2","3","4","5","effect"]) # read txt files with max correlation for two models
-                df_2 = pd.read_csv(f2,names=["electrode","1","2","3","4","5","effect"])
-
-                assert(len(df_1) == len(df_2))
-                df = df_1
-                df.effect = df_1.effect - df_2.effect # get difference
-                out_dir = f"results/cor-tfs-max-diff/{sid}_ave_{model1}-{model2}-contrast_{key}.txt"
-
-                df.to_csv(out_dir ,index=False, header=False)
-
-    #### Difference between prod and comp ####
-    elif OUTPUT_DIR == "results/cor-tfs-max-diff-prod-comp":
-
-        for sid in SIDS:
-            for format in FORMATS:
-
-                emb_keys = [emb for emb in format.keys()]
-                
-                for emb_key in emb_keys:
-
-                    f1 = f"results/cor-tfs-max/{sid}_ave_{emb_key}_comp.txt"
-                    f2 = f"results/cor-tfs-max/{sid}_ave_{emb_key}_prod.txt"
-
-                    df_1 = pd.read_csv(f1,names=["electrode","1","2","3","4","5","effect"]) # read txt files with max correlation for two models
-                    df_2 = pd.read_csv(f2,names=["electrode","1","2","3","4","5","effect"])
-
-                    assert(len(df_1) == len(df_2))
-                    df = df_1
-                    df.effect = df_2.effect - df_1.effect # get difference
-
-                    out_dir = f"results/cor-tfs-max-diff-prod-comp/{sid}_ave_{emb_key}-prod-comp-contrast.txt"
-
-                    df.to_csv(out_dir ,index=False, header=False)
-
-    ##### Difference in area under the curve #####
-    elif "cor-tfs-area" in OUTPUT_DIR:
-        chosen_lag_idx = [
-            idx for idx, element in enumerate(LAGS) if (element >= AREA_START) & (element <= AREA_END)
-        ] # calculate the correct lag idx
-
-        for sid, format in zip(SIDS, FORMATS):
-            emb_key = [emb + "_" + key for emb in format.keys() for key in KEYS]
-            df = get_base_df(sid, COR_TYPE, emb_key) # get all electrodes
-            df = add_encoding(df, sid, format, "area", LAGS, chosen_lag_idx) # add on columns from encoding results
-            df = get_area_diff(df, emb_key, "normalized2") # get area difference
-
-            # save txt files
-            new_emb_key = [col.replace("incorrect","").replace("bot", "") for col in emb_key if "incorrect" in col or "bot" in col]
-            save_file(df, sid, new_emb_key, OUTPUT_DIR, COR_TYPE, PRJ_ID) # save txt files
-
-
-####################################################################
-# AGGREGATE BRAIN COORDINATE FILES FOR ALL PATIENTS AND SIG ELECS ##
-####################################################################
-
-if AGGREGATE:
-    for emb in SIG_DICT.keys():
-        for key in KEYS:
-            if SIG_ELECS:
-                sig_name = SIG_DICT[emb]
-            else:
-                sig_name = None
-            aggregate_results(INPUT_DIR, SIDS, COR_TYPE, emb, key, sig_name)
-
-
+if __name__ == "__main__":
+    main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_in_effect_file)
