@@ -1,8 +1,13 @@
 import pickle
 import os
+import argparse
+import sys
 
 import numpy as np
 import pandas as pd
+import nltk
+
+from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
@@ -10,11 +15,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.dummy import DummyClassifier
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import balanced_accuracy_score
-
 from tfsplt_utils import load_pickle
 
 
+# nltk.download("punkt")
+# nltk.download("averaged_perceptron_tagger")
+# nltk.download("universal_tagset")
+
+
 def run_pca(pca_to, df, col):
+    print(f"PCA {col} to {pca_to}")
     pca = PCA(n_components=pca_to, svd_solver="auto", whiten=True)
 
     df_emb = df[col]
@@ -24,6 +34,260 @@ def run_pca(pca_to, df, col):
     df[col] = pca_output.tolist()
 
     return df
+
+
+def save_pickle(item, file_name):
+    """Write 'item' to 'file_name.pkl'"""
+    add_ext = "" if file_name.endswith(".pkl") else ".pkl"
+
+    file_name = file_name + add_ext
+
+    os.makedirs(os.path.dirname(file_name), exist_ok=True)
+
+    with open(file_name, "wb") as fh:
+        pickle.dump(item, fh)
+    return
+
+
+def ave_emb(datum):
+    print("Averaging embeddings across tokens")
+
+    # calculate mean embeddings
+    def mean_emb(embs):
+        return np.array(embs.values.tolist()).mean(axis=0).tolist()
+
+    mean_embs = datum.groupby(["adjusted_onset", "word"], sort=False)["en_emb"].apply(
+        lambda x: mean_emb(x)
+    )
+    mean_embs = pd.DataFrame(mean_embs)
+    mean_embs2 = datum.groupby(["adjusted_onset", "word"], sort=False)["de_emb"].apply(
+        lambda x: mean_emb(x)
+    )
+    mean_embs2 = pd.DataFrame(mean_embs2)
+
+    # replace embeddings
+    idx = (
+        datum.groupby(["adjusted_onset", "word"], sort=False)["token_idx"].transform(
+            min
+        )
+        == datum["token_idx"]
+    )
+    datum = datum[idx]
+    mean_embs.set_index(datum.index, inplace=True)
+    mean_embs2.set_index(datum.index, inplace=True)
+
+    datum2 = datum.copy()  # setting copy to avoid warning
+    datum2.loc[:, "en_emb"] = mean_embs["en_emb"]
+    datum2.loc[:, "de_emb"] = mean_embs2["de_emb"]
+    datum = datum2  # reassign back to datum
+
+    return datum
+
+
+def ave_emb_wordlevel(datum):
+    # calculate mean embeddings
+    def mean_emb(embs):
+        return np.array(embs.values.tolist()).mean(axis=0).tolist()
+
+    mean_embs = datum.groupby(["word"], sort=False)["en_emb"].apply(
+        lambda x: mean_emb(x)
+    )
+    mean_embs = pd.DataFrame(mean_embs)
+    mean_embs.reset_index(drop=True, inplace=True)
+    mean_embs2 = datum.groupby(["word"], sort=False)["de_emb"].apply(
+        lambda x: mean_emb(x)
+    )
+    mean_embs2 = pd.DataFrame(mean_embs2)
+    mean_embs2.reset_index(drop=True, inplace=True)
+
+    datum2 = datum.copy()  # setting copy to avoid warning
+    datum2.drop_duplicates(["word"], inplace=True, ignore_index=True)
+    datum2.loc[:, "en_emb"] = mean_embs["en_emb"]
+    datum2.loc[:, "de_emb"] = mean_embs2["de_emb"]
+    datum = datum2  # reassign back to datum
+
+    return datum
+
+
+def aggregate_df(args):
+    print("Aggregating Data")
+
+    subjects = [625, 676, 7170, 798]
+
+    whisper_en = f"pickles/embeddings/whisper-tiny.en-encoder/full/cnxt_0001/layer_{args.en_layer:02}.pkl"
+    whisper_de = f"pickles/embeddings/whisper-tiny.en-decoder/full/cnxt_0001/layer_{args.de_layer:02}.pkl"
+    base_df_filename = "pickles/embeddings/whisper-tiny.en-decoder/full/base_df.pkl"
+
+    # load in data
+    whisper_df = pd.DataFrame()
+
+    for subj in subjects:
+        temp_base_df = load_pickle(f"{args.loaddir}{subj}/{base_df_filename}")
+        temp_base_df = temp_base_df.dropna(subset=["onset", "offset"])
+        temp_base_df.reset_index(drop=True, inplace=True)
+
+        temp_en_df = load_pickle(f"{args.loaddir}{subj}/{whisper_en}")
+        temp_de_df = load_pickle(f"{args.loaddir}{subj}/{whisper_de}")
+
+        temp_base_df = temp_base_df.assign(en_emb=temp_en_df.embeddings)
+        temp_base_df = temp_base_df.assign(de_emb=temp_de_df.embeddings)
+
+        whisper_df = pd.concat([whisper_df, temp_base_df])
+
+    whisper_df = whisper_df.loc[
+        :,
+        (
+            "adjusted_onset",
+            "token_idx",
+            "word",
+            "word_freq_overall",
+            "in_glove50",
+            "en_emb",
+            "de_emb",
+        ),
+    ]
+    whisper_df = whisper_df[whisper_df["en_emb"].notna()]
+    whisper_df = whisper_df[whisper_df["de_emb"].notna()]
+    whisper_df = ave_emb(whisper_df)
+
+    return whisper_df
+
+
+def add_speech(whisper_df):
+    # Get Part of Speech
+    words_orig, part_of_speech = zip(*nltk.pos_tag(whisper_df.word, tagset="universal"))
+    whisper_df = whisper_df.assign(part_of_speech=part_of_speech)
+
+    # Get function content
+    function_content_dict = {
+        "ADP": "function",
+        "CONJ": "function",
+        "DET": "function",
+        "PRON": "function",
+        "PRT": "function",
+        "ADJ": "content",
+        "ADV": "content",
+        "NOUN": "content",
+        "NUM": "content",
+        "VERB": "content",
+        "X": "unknown",
+    }
+    function_content = whisper_df.apply(
+        lambda x: function_content_dict.get(x["part_of_speech"]), axis=1
+    )
+    whisper_df = whisper_df.assign(function_content=function_content)
+
+    return whisper_df
+
+
+def add_phoneme(whisper_df, dirname):
+    # get phoneme dict
+    cmu_dict_filename = f"{dirname}cmudict-0.7b"
+    pdict = {}
+    with open(cmu_dict_filename, "r", encoding="ISO-8859-1") as f:
+        for line in f.readlines():
+            if not line.startswith(";;;"):
+                parts = line.rstrip().split()
+                word = parts[0].lower()
+                phones = [phone.rstrip("012") for phone in parts[1:]]
+                pdict[word] = phones
+
+    words2phonemes = whisper_df.apply(lambda x: pdict.get(x["word"].lower()), axis=1)
+
+    # add to df
+    whisper_df = whisper_df.assign(pho=words2phonemes)
+    whisper_df = whisper_df[~whisper_df.pho.isnull()]
+    whisper_df = whisper_df.explode("pho", ignore_index=False)
+    whisper_df["pho_idx"] = (
+        whisper_df.groupby(["word", "adjusted_onset"]).cumcount() + 1
+    )
+
+    return whisper_df
+
+
+def add_phoneme_cat(whisper_df, dirname):
+    # original categorization, including specific vowel catergorization
+    # phoneset = ['AA', 'AE', 'AH', 'AO', 'AW', 'AY', 'B', 'CH', 'D', 'DH', 'EH', 'ER', 'EY', 'F' , 'G', 'HH', 'IH', 'IY', 'JH', 'K', 'L',  'M', 'N' , 'NG', 'OW', 'OY', 'P',  'R', 'S',  'SH', 'T', 'TH', 'UH', 'UW', 'V', 'W', 'Y', 'Z', 'ZH']
+    # place_of_articulation   = ['low-central', 'low-front', 'mid-central', 'mid-back', 'high-back', 'high-front', 'bilabial', 'post-alveolar', 'alveolar', 'inter-dental', 'mid-front', 'mid-central', 'mid-front','alveolar','velar', 'glotal', 'high-front', 'high-front', 'post-alveolar', 'velar', 'alveolar', 'bilabial', 'alveolar', 'velar', 'high-back', 'high-front', 'bilabial', 'alveolar', 'alveolar', 'post-alveolar', 'alveolar', 'inter-dental', 'high-back', 'high-back', 'labio-dental', 'bilabial', 'palatal', 'alveolar', 'post-alveolar']
+    # manner_of_articulation  = ['lax', 'lax', 'lax', 'lax', 'lax', 'tense', 'stop', 'affricate', 'stop', 'fricative', 'lax', 'tense', 'tense', 'flap', 'stop','fricative', 'lax', 'tense', 'affricate', 'stop', 'lateral-liquid', 'nasal', 'nasal', 'nasal', 'lax', 'lax', 'stop', 'retroflex-liquid', 'fricative', 'fricative', 'stop', 'fricative', 'lax', 'tense', 'fricative', 'glide', 'glide', 'fricative', 'fricative']
+
+    # create categorizations
+    phoneset_categorizations = pd.read_csv(f"{dirname}phoneset.csv")
+    phoneset = phoneset_categorizations.Phoneme.values
+    place_of_articulation = phoneset_categorizations.iloc[:, 1].values
+    manner_of_articulation = phoneset_categorizations.iloc[:, 2].values
+    voiced_or_voiceless = phoneset_categorizations.iloc[:, 3].values
+
+    place_of_articulation_dict = dict(zip(phoneset, place_of_articulation))
+    manner_of_articulation_dict = dict(zip(phoneset, manner_of_articulation))
+    voiced_or_voiceless_dict = dict(zip(phoneset, voiced_or_voiceless))
+
+    phocat = whisper_df.apply(
+        lambda x: place_of_articulation_dict.get(x["pho"]), axis=1
+    )
+    whisper_df = whisper_df.assign(place_artic=phocat)
+    phocat = whisper_df.apply(
+        lambda x: manner_of_articulation_dict.get(x["pho"]), axis=1
+    )
+    whisper_df = whisper_df.assign(manner_artic=phocat)
+    phocat = whisper_df.apply(lambda x: voiced_or_voiceless_dict.get(x["pho"]), axis=1)
+    whisper_df = whisper_df.assign(voice=phocat)
+
+    return whisper_df
+
+
+def add_phoneme_emb(whisper_df):
+    # select first few phonemes
+    # whisper_df = whisper_df[whisper_df.pho_idx <= 4]
+    print(f"First phonemes #: {sum(whisper_df.pho_idx == 1)}")
+    print(f"Second phonemes #: {sum(whisper_df.pho_idx == 2)}")
+    print(f"Third phonemes #: {sum(whisper_df.pho_idx == 3)}")
+    print(f"Fourth phonemes #: {sum(whisper_df.pho_idx == 4)}")
+    whisper_df = whisper_df[whisper_df.pho_idx == 1]
+
+    # Get phoneme embeddings (for first phoneme)
+    # const = 384
+    # emb1 = []
+    # for emb in whisper_df["en_emb"]:  # FIXME inefficient
+    #     emb1.append(emb[0 : 3 * const])
+    # whisper_df = whisper_df.assign(pho_emb=emb1)
+
+    return whisper_df
+
+
+def process_df(whisper_df, args):
+    print(f"Original Datum Len: {len(whisper_df)}")
+    whisper_df = add_speech(whisper_df)
+
+    # Get only meaningful content words
+    # whisper_df = whisper_df[whisper_df.word_freq_overall < 10]
+
+    if args.aggr_type == "1st":
+        print("Taking first instance of words")
+        whisper_df.drop_duplicates(["word"], inplace=True, ignore_index=True)
+    elif args.aggr_type == "ave":
+        print("Averaging embeddings across words")
+        whisper_df = ave_emb_wordlevel(whisper_df)
+    else:
+        print("Keeping all words")
+        pass
+
+    print(f"After filtering: {len(whisper_df)}")
+
+    whisper_df = add_phoneme(whisper_df, args.loaddir)
+    print(f"Total Phoneme #: {len(whisper_df)}")
+    whisper_df = add_phoneme_cat(whisper_df, args.loaddir)
+    whisper_df = add_phoneme_emb(whisper_df)
+
+    return whisper_df
+
+
+def tsne(whisper_df, col):
+    print(f"Doing t-SNE on {col}")
+    tsne = TSNE(n_components=2, perplexity=50, random_state=329)
+    embs = pd.DataFrame(np.vstack(whisper_df[col]))
+    projections = pd.DataFrame(tsne.fit_transform(embs))
+    return projections
 
 
 def logistic(df, x, y):
@@ -42,28 +306,28 @@ def logistic(df, x, y):
     if x in df.columns:  # logistic
         model = make_pipeline(
             StandardScaler(),
-            # PCA(50, whiten=True),
-            LogisticRegression(max_iter=1000, class_weight="balanced"),
+            PCA(50, whiten=True),
+            LogisticRegression(max_iter=1000),
         )
-    elif x == "uniform":  # control 1
+    elif x == "freq":  # control 1
         model = make_pipeline(
             StandardScaler(),
-            # PCA(50, whiten=True),
+            PCA(50, whiten=True),
+            DummyClassifier(strategy="most_frequent"),
+        )
+        x = "de_emb"
+    elif x == "uniform":  # control 2
+        model = make_pipeline(
+            StandardScaler(),
+            PCA(50, whiten=True),
             DummyClassifier(strategy="uniform"),
         )
         x = "de_emb"
-    elif x == "strat":  # control 2
+    elif x == "strat":  # control 3
         model = make_pipeline(
             StandardScaler(),
-            # PCA(50, whiten=True),
+            PCA(50, whiten=True),
             DummyClassifier(strategy="stratified"),
-        )
-        x = "de_emb"
-    elif x == "freq":  # control 2
-        model = make_pipeline(
-            StandardScaler(),
-            # PCA(50, whiten=True),
-            DummyClassifier(strategy="most_frequent"),
         )
         x = "de_emb"
 
@@ -100,22 +364,7 @@ def logistic(df, x, y):
     return scores
 
 
-def main():
-    # Loading tf
-    layer = ""
-    emb_type = "1st"
-    emb_type = "all"
-    emb_type = "ave"
-    # dirname = "results/20230607-whisper-tsne/"
-    dirname = "results/20230612-whisper-tsne-no-filter/"
-    # dirname = "results/20230613-whisper-medium-podcast/"
-    tsne_file = f"all4-whisper-embs-{emb_type}{layer}.pkl"
-    # tsne_file = f"777-whisper-embs-{emb_type}{layer}.pkl"
-    tsne_file = os.path.join(dirname, tsne_file)
-    df = load_pickle(tsne_file)
-
-    # df = df[df.word_freq_overall >= 10]
-
+def classify(df, args):
     plot_dict = {
         "pho": "phoneme",
         "place_artic": "place_of_articulation",
@@ -131,13 +380,12 @@ def main():
         "uniform",
         "strat",
     ]
-    dims = [50]
 
-    for dim in dims:  # loop over dim
+    for dim in args.pca_dims:  # loop over dim
         results_df = pd.DataFrame(columns={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
         print(dim)
-        df = run_pca(dim, df, "en_emb")
-        df = run_pca(dim, df, "de_emb")
+        # df = run_pca(dim, df, "en_emb")
+        # df = run_pca(dim, df, "de_emb")
         for plot in plot_dict.keys():
             for emb in embs:
                 scores = logistic(df, emb, plot)
@@ -145,13 +393,81 @@ def main():
                 results_df.loc[name, :] = scores
         results_df.to_csv(
             os.path.join(
-                dirname,
-                # f"classifier_pca{dim}_filter-sep_{emb_type}_L{layer}.csv",
-                f"classifier_pca{dim}_filter-100_{emb_type}_L{layer}-balanced.csv",
+                args.savedir,
+                f"classifier_pca{dim}_filter-100_{args.aggr_type}_L{args.layer}.csv",
             )
         )
 
-    return
+
+def arg_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--layer", nargs="?", type=str, default="")
+    parser.add_argument("--aggregate", action="store_true", default=False)
+    parser.add_argument("--tsne", action="store_true", default=False)
+    parser.add_argument("--classify", action="store_true", default=False)
+    parser.add_argument("--aggr-type", nargs="?", type=str, default="ave")
+    parser.add_argument(
+        "--savedir", nargs="?", type=str, default="results/paper-whisper"
+    )
+    args = parser.parse_args()
+
+    args.en_layer = int(args.layer)
+    args.de_layer = int(args.layer)
+
+    if args.layer == "-1":
+        args.layer = ""
+        args.en_layer = 4
+        args.de_layer = 3
+
+    args.loaddir = "data/pickling/tfs/"
+    aggr_file = f"all4-whisper-embs-{args.aggr_type}{args.layer}.pkl"
+    args.aggr_file = os.path.join(args.savedir, aggr_file)
+    tsne_file = f"all4-whisper-tsne-pca-{args.aggr_type}{args.layer}.pkl"
+    args.tsne_file = os.path.join(args.savedir, tsne_file)
+
+    args.pca_dims = [50]
+
+    # make save folder if not exist
+    if not os.path.exists(args.savedir):
+        os.makedirs(args.savedir)
+
+    return args
+
+
+def main():
+    args = arg_parser()
+
+    print(
+        f"Aggregate: {args.aggregate}\t\tUsing en-{args.en_layer} and de-{args.de_layer}, {args.aggr_type} embeddings\n"
+    )
+    print(f"t-SNE: {args.tsne}\n")
+    print(f"Classifier: {args.classify}\n")
+    breakpoint()
+
+    # Aggregate or load file
+    if args.aggregate:
+        df = aggregate_df(args)
+        df = process_df(df, args)
+        save_pickle(df, args.aggr_file)
+    else:
+        df = load_pickle(args.aggr_file)
+
+    # t-SNE
+    if args.tsne:
+        tsne_en = tsne(df, "en_emb")
+        tsne_de = tsne(df, "de_emb")
+        df = df.reset_index(drop=True)
+        df = df.assign(
+            en_x=tsne_en[0],
+            en_y=tsne_en[1],
+            de_x=tsne_de[0],
+            de_y=tsne_de[1],
+        )
+        save_pickle(df, args.tsne_file)
+
+    # Classifer
+    if args.classify:
+        classify(df, args)
 
 
 if __name__ == "__main__":
