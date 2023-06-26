@@ -253,7 +253,7 @@ def main(id,effect_file,cbar_titles,outname,cbar_min,cbar_max,colorscales,coor_i
                 cbar_title,colorscale)
         else:
             # Filter electrodes to plot
-            df_coor = df_coor[df_coor.name.isin(df_eff.name)]
+            df_coor = df_coor[(df_coor.subject+df_coor.name).isin(df_eff.subject+df_eff.name)]
             fignew = plot_electrodes(df_coor['subject'] + df_coor['name'],df_coor[coor_type+"_X"],df_coor[coor_type+"_Y"],df_coor[coor_type+"_Z"],
                 cbar_title,colorscale)
             
