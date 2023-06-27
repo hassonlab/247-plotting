@@ -46,7 +46,7 @@ CMD := python
 
 
 emb-class:
-	$(CMD) scripts/tfsemb_emb-class.py \
+	$(CMD) scripts/tfsemb_class.py \
 		$(AGGR) \
 		$(TSNE) \
 		$(CLASS) \
@@ -57,7 +57,7 @@ emb-class:
 
 emb-class-layers:
 	for layer in $(LAYER_IDX); do \
-		$(CMD) scripts/tfsemb_emb-class.py \
+		$(CMD) scripts/tfsemb_class.py \
 			$(AGGR) \
 			$(TSNE) \
 			$(CLASS) \
