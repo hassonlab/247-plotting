@@ -11,8 +11,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 
-def read_sig_file(filename, old_results=False):
-    sig_file = pd.read_csv("data/" + filename)
+def read_sig_file(filename, filedir, old_results=False):
+    sig_file = pd.read_csv(os.path.join(filedir, filename))
     sig_file["sid_electrode"] = (
         sig_file["subject"].astype(str) + "_" + sig_file["electrode"]
     )
