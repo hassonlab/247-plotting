@@ -9,10 +9,8 @@ link-data:
 	mkdir -p data
 	mkdir -p data/plotting
 	rsync -rav /projects/HASSON/247/plotting/* data/plotting/
-	mkdir -p data/pickling
-	ln -fs $(PDIR)/247-pickling/results/* data/pickling/
-	mkdir -p data/encoding
-	ln -fs $(PDIR)/247-encoding/results/* data/encoding/
+	ln -fs $(PDIR)/247-pickling/results data/pickling
+	ln -fs $(PDIR)/247-encoding/results data/encoding
 	mkdir -p results
 	mkdir -p results/figures
 
@@ -78,9 +76,9 @@ emb-class-layers:
 # LAG_TKS: lag ticks (tick marks to show on the x-axis) (optional)
 # LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
 
-LAGS_PLT := {-2000..2000..25} # lag2k-25
 LAGS_PLT := {-5000..5000..25} # lag5k-25
 LAGS_PLT := {-10000..10000..25} # lag10k-25
+LAGS_PLT := {-2000..2000..25} # lag2k-25
 
 # Plotting for vanilla encoding (no concatenated lags)
 LAGS_SHOW := $(LAGS_PLT)
@@ -125,8 +123,8 @@ PLT_PARAMS := --lc-by labels --ls-by keys # plot for just one key (podcast plots
 PLT_PARAMS := --lc-by labels --ls-by keys --split horizontal --split-by keys # plot for prod+comp (247 plots)
 
 # y-axis limits (for individual plots) (leave it 0 for automatic)
-Y_LIMIT := 0
 Y_LIMIT := 0 0.3
+Y_LIMIT := 0
 
 # Figure Size (width height)
 FIG_SZ:= 15 6
@@ -172,5 +170,188 @@ plot-encoding:
 		$(LAG_TK_LABLS) \
 		$(PLT_PARAMS) \
 		--y-vals-limit $(Y_LIMIT) \
-		--outfile results/figures/tfs-glove-pred0.3-new-set.pdf
+		--outfile results/figures/tfs-glove-probimprob.pdf
+	rsync -av results/figures/ ~/tigress/247-encoding-results/
+
+
+plot-encoding-twosplit:
+	rm -f results/figures/*
+	python scripts/tfsplt_encoding_twosplit.py \
+		--sid 625 676 7170 798 \
+		--formats \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-676-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-7170-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb2/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb3/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb4/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb2-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb3-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+			'data/encoding/tfs/stock-glove/kw-tfs-full-798-glove50-lag2k-25-all-concat-emb4-nopca/*/*_%s.csv' \
+		--keys \
+			'glove-n comp pca' \
+			'glove-n prod pca' \
+			'glove-n+1 comp pca' \
+			'glove-n+1 prod pca' \
+			'glove-n+2 comp pca' \
+			'glove-n+2 prod pca' \
+			'glove-n+3 comp pca' \
+			'glove-n+3 prod pca' \
+			'glove-n+4 comp pca' \
+			'glove-n+4 prod pca' \
+			'glove-n comp no-pca' \
+			'glove-n prod no-pca' \
+			'glove-n+1 comp no-pca' \
+			'glove-n+1 prod no-pca' \
+			'glove-n+2 comp no-pca' \
+			'glove-n+2 prod no-pca' \
+			'glove-n+3 comp no-pca' \
+			'glove-n+3 prod no-pca' \
+			'glove-n+4 comp no-pca' \
+			'glove-n+4 prod no-pca' \
+			'glove-n comp pca' \
+			'glove-n prod pca' \
+			'glove-n+1 comp pca' \
+			'glove-n+1 prod pca' \
+			'glove-n+2 comp pca' \
+			'glove-n+2 prod pca' \
+			'glove-n+3 comp pca' \
+			'glove-n+3 prod pca' \
+			'glove-n+4 comp pca' \
+			'glove-n+4 prod pca' \
+			'glove-n comp no-pca' \
+			'glove-n prod no-pca' \
+			'glove-n+1 comp no-pca' \
+			'glove-n+1 prod no-pca' \
+			'glove-n+2 comp no-pca' \
+			'glove-n+2 prod no-pca' \
+			'glove-n+3 comp no-pca' \
+			'glove-n+3 prod no-pca' \
+			'glove-n+4 comp no-pca' \
+			'glove-n+4 prod no-pca' \
+			'glove-n comp pca' \
+			'glove-n prod pca' \
+			'glove-n+1 comp pca' \
+			'glove-n+1 prod pca' \
+			'glove-n+2 comp pca' \
+			'glove-n+2 prod pca' \
+			'glove-n+3 comp pca' \
+			'glove-n+3 prod pca' \
+			'glove-n+4 comp pca' \
+			'glove-n+4 prod pca' \
+			'glove-n comp no-pca' \
+			'glove-n prod no-pca' \
+			'glove-n+1 comp no-pca' \
+			'glove-n+1 prod no-pca' \
+			'glove-n+2 comp no-pca' \
+			'glove-n+2 prod no-pca' \
+			'glove-n+3 comp no-pca' \
+			'glove-n+3 prod no-pca' \
+			'glove-n+4 comp no-pca' \
+			'glove-n+4 prod no-pca' \
+			'glove-n comp pca' \
+			'glove-n prod pca' \
+			'glove-n+1 comp pca' \
+			'glove-n+1 prod pca' \
+			'glove-n+2 comp pca' \
+			'glove-n+2 prod pca' \
+			'glove-n+3 comp pca' \
+			'glove-n+3 prod pca' \
+			'glove-n+4 comp pca' \
+			'glove-n+4 prod pca' \
+			'glove-n comp no-pca' \
+			'glove-n prod no-pca' \
+			'glove-n+1 comp no-pca' \
+			'glove-n+1 prod no-pca' \
+			'glove-n+2 comp no-pca' \
+			'glove-n+2 prod no-pca' \
+			'glove-n+3 comp no-pca' \
+			'glove-n+3 prod no-pca' \
+			'glove-n+4 comp no-pca' \
+			'glove-n+4 prod no-pca' \
+		--sig-elec-file-dir $(SIG_FN_DIR)\
+		$(SIG_FN) \
+		--fig-size $(FIG_SZ) \
+		--lags-plot $(LAGS_PLT) \
+		--lags-show $(LAGS_SHOW) \
+		--x-vals-show $(X_VALS_SHOW) \
+		$(LAG_TKS) \
+		$(LG_TK_LABLS) \
+		--y-vals-limit $(Y_LIMIT) \
+		--lc-by 0 \
+		--ls-by 1 \
+		--split-hor 1 \
+		--split-ver 2 \
+		--outfile results/figures/tfs-glove-concat-twosplit.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
