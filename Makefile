@@ -176,7 +176,7 @@ plot-encoding:
 
 plot-encoding-twosplit:
 	rm -f results/figures/*
-	python scripts/tfsplt_encoding_twosplit.py \
+	python scripts/tfsplt_encoding-twosplit.py \
 		--sid 625 676 7170 798 \
 		--formats \
 			'data/encoding/tfs/stock-glove/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
@@ -355,3 +355,26 @@ plot-encoding-twosplit:
 		--split-ver 2 \
 		--outfile results/figures/tfs-glove-concat-twosplit.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
+
+
+
+# HAS_CTX := --has-ctx
+# SIG_ELECS := --sig-elecs
+
+LAYER_IDX := $(shell seq 0 25)
+
+CONDS := all correct incorrect
+CONDS := all
+
+
+plot-encoding-layers:
+	rm -f results/figures/*
+	python scripts/tfsplt_encoding-layers.py \
+		--sid 777 \
+		--layer-num 24 \
+		--top-dir data/encoding/podcast-old/20220516-eric-paper-replication/podcast-zaid-mwf\=0 \
+		--modes comp \
+		--conditions $(CONDS) \
+		$(HAS_CTX) \
+		$(SIG_ELECS) \
+		--outfile results/figures/podcast-ericplots.pdf
