@@ -2,15 +2,11 @@ import argparse
 import glob
 import itertools
 import os
-from multiprocessing import Pool
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.backends.backend_pdf import PdfPages
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from scipy.stats import pearsonr
 from tfsplt_utils import (
     get_cat_color,
     get_fader_color,
@@ -47,9 +43,7 @@ def arg_parser():
     parser.add_argument("--x-vals-show", nargs="+", type=float, required=True)
     parser.add_argument("--lag-ticks", nargs="+", type=float, default=[])
     parser.add_argument("--lag-tick-labels", nargs="+", type=int, default=[])
-    parser.add_argument(
-        "--y-vals-limit", nargs="+", type=float, default=[0, 0.3]
-    )
+    parser.add_argument("--y-vals-limit", nargs="+", type=float, default=[0, 0.3])
     parser.add_argument("--lc-by", type=str, default=None)
     parser.add_argument("--ls-by", type=str, default=None)
     parser.add_argument("--split", type=str, default=None)
@@ -128,16 +122,12 @@ def get_cmap_smap(args):
             for label, style in zip(args.unique_labels, styles):
                 cmap[(label, key)] = color
                 smap[(label, key)] = style
-    elif (
-        args.lc_by == args.ls_by == "labels"
-    ):  # both line color and style by labels
+    elif args.lc_by == args.ls_by == "labels":  # both line color and style by labels
         for label, color, style in zip(args.unique_labels, colors, styles):
             for key in args.unique_keys:
                 cmap[(label, key)] = color
                 smap[(label, key)] = style
-    elif (
-        args.lc_by == args.ls_by == "keys"
-    ):  # both line color and style by keys
+    elif args.lc_by == args.ls_by == "keys":  # both line color and style by keys
         for key, color, style in zip(args.unique_keys, colors, styles):
             for label in args.unique_labels:
                 cmap[(label, key)] = color
@@ -170,9 +160,7 @@ def get_sigelecs(args):
         for fname, sid_key in zip(args.sig_elec_file, sid_key_tup):
             sigelecs[sid_key] = read_sig_file(fname, args.sig_elec_file_dir)
     else:
-        raise Exception(
-            "Need a significant electrode file for each subject-key combo"
-        )
+        raise Exception("Need a significant electrode file for each subject-key combo")
 
     args.sigelecs = sigelecs
     return args
@@ -249,10 +237,7 @@ def aggregate_data(args):
             for resultfn in files:
                 elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
                 # Skip electrodes if they're not part of the sig list
-                if (
-                    len(args.sigelecs)
-                    and elec not in args.sigelecs[(load_sid, key)]
-                ):
+                if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
                     continue
                 df = pd.read_csv(resultfn, header=None)
                 df.insert(0, "sid", load_sid)
@@ -520,9 +505,7 @@ def plot_electrodes_split(args, df, pdf):
     print(f"Plotting Individual Elecs split {args.split}ly by {args.split_by}")
     fig_ver_num, fig_hor_num, plot_split, _, plot_lists = plot_split_args(args)
     for (electrode, sid), subdf in df.groupby(["electrode", "sid"], axis=0):
-        fig, axes = plt.subplots(
-            fig_ver_num, fig_hor_num, figsize=args.fig_size
-        )
+        fig, axes = plt.subplots(fig_ver_num, fig_hor_num, figsize=args.fig_size)
         for _, (plot, subsubdf) in zip(axes, subdf.groupby(plot_split)):
             ax = axes[plot_lists.index(plot)]
             for row, values in subsubdf.iterrows():
@@ -545,9 +528,7 @@ def plot_electrodes_split(args, df, pdf):
             ax.axhline(0, ls="dashed", alpha=0.3, c="k")
             ax.axvline(0, ls="dashed", alpha=0.3, c="k")
             ax.legend(loc="upper left", frameon=False)
-            ax.set_ylim(
-                args.y_vals_limit[0] - 0.05, args.y_vals_limit[1] + 0.05
-            )
+            ax.set_ylim(args.y_vals_limit[0] - 0.05, args.y_vals_limit[1] + 0.05)
             ax.set(
                 xlabel="Lag (s)",
                 ylabel="Correlation (r)",

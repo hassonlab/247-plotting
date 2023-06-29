@@ -76,9 +76,9 @@ emb-class-layers:
 # LAG_TKS: lag ticks (tick marks to show on the x-axis) (optional)
 # LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
 
-LAGS_PLT := {-5000..5000..25} # lag5k-25
 LAGS_PLT := {-10000..10000..25} # lag10k-25
 LAGS_PLT := {-2000..2000..25} # lag2k-25
+LAGS_PLT := {-5000..5000..25} # lag5k-25
 
 # Plotting for vanilla encoding (no concatenated lags)
 LAGS_SHOW := $(LAGS_PLT)
@@ -359,22 +359,42 @@ plot-encoding-twosplit:
 
 
 # HAS_CTX := --has-ctx
-# SIG_ELECS := --sig-elecs
-
-LAYER_IDX := $(shell seq 0 25)
+SIG_ELECS := --sig-elecs
 
 CONDS := all correct incorrect
-CONDS := all
+CONDS := all flip
 
-
-plot-encoding-layers:
+plot_layers:
 	rm -f results/figures/*
-	python scripts/tfsplt_encoding-layers.py \
-		--sid 777 \
-		--layer-num 24 \
-		--top-dir data/encoding/podcast-old/20220516-eric-paper-replication/podcast-zaid-mwf\=0 \
-		--modes comp \
+	python scripts/tfsplt_layer.py \
+		--sid 625 \
+		--layer-num 16 \
+		--top-dir results/tfs/bbot-layers-625 \
+		--modes comp prod \
 		--conditions $(CONDS) \
 		$(HAS_CTX) \
 		$(SIG_ELECS) \
-		--outfile results/figures/podcast-ericplots.pdf
+		--outfile results/figures/625-ericplots-bbot.pdf
+
+
+plot-encoding-layers:
+	python scripts/tfsplt_encoding-layers.py \
+		--sid 625 676 7170 798 \
+		--formats \
+			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-625-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
+			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-676-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
+			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-7170-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
+			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-798-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
+		--labels $(shell seq 0 24)\
+		--keys comp prod \
+		--sig-elec-file-dir $(SIG_FN_DIR)\
+		$(SIG_FN) \
+		--fig-size $(FIG_SZ) \
+		--lags-plot $(LAGS_PLT) \
+		--lags-show $(LAGS_SHOW) \
+		--x-vals-show $(X_VALS_SHOW) \
+		$(LAG_TKS) \
+		$(LAG_TK_LABLS) \
+		--y-vals-limit $(Y_LIMIT) \
+		--outfile results/figures/tfs-whisper-medium-layers.pdf
+	rsync -av results/figures/ ~/tigress/247-encoding-results/

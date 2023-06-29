@@ -18,7 +18,7 @@ from tfsplt_utils import (
     read_sig_file,
     read_folder,
 )
-from tfsplt_encoding import get_elecbrain
+from tfsplt_encoding import get_sid, get_elecbrain
 
 
 # -----------------------------------------------------------------------------
@@ -175,18 +175,6 @@ def set_up_environ(args):
 # -----------------------------------------------------------------------------
 
 
-# def add_sid(df, elec_name_dict):
-#     elec_name = df.index.to_series().str.get(1).tolist()
-#     sid_name = df.index.to_series().str.get(3).tolist()
-#     for idx, string in enumerate(elec_name):
-#         if string.find("_") < 0 or not string[0:3].isdigit():  # no sid in front
-#             new_string = str(sid_name[idx]) + "_" + string  # add sid
-#             elec_name_dict[string] = new_string
-#         else:
-#             elec_name_dict[string] = string
-#     return elec_name_dict
-
-
 def aggregate_data(args, parallel=False):
     """Aggregate encoding data
 
@@ -199,13 +187,7 @@ def aggregate_data(args, parallel=False):
     data = []
     print("Aggregating data")
     for fmt, label in zip(args.formats, args.keys):
-        load_sid = 0
-        for sid in args.sid:
-            if str(sid) in fmt:
-                load_sid = sid
-        assert (
-            load_sid != 0
-        ), f"Need subject id for format {fmt}"  # check subject id for format is provided
+        load_sid = get_sid(fmt, args)
         fname = fmt % label[1]
         data = read_folder(
             data,
@@ -236,7 +218,7 @@ def organize_data(args, df):
         df (DataFrame): df with correct columns (lags)
     """
     df.set_index(
-        ["sid", "electrode", "label", "mode", "type"],
+        ["sid", "electrode", "label", "key", "type"],
         inplace=True,
     )
 
@@ -247,7 +229,9 @@ def organize_data(args, df):
     if len(args.lags_show) < len(args.lags_plot):  # plot parts of lags
         print("Trimming Data")
         chosen_lag_idx = [
-            idx for idx, element in enumerate(args.lags_plot) if element in args.lags_show
+            idx
+            for idx, element in enumerate(args.lags_plot)
+            if element in args.lags_show
         ]
         df = df.loc[:, chosen_lag_idx]  # chose from lags to show for the plot
         assert len(args.x_vals_show) == len(

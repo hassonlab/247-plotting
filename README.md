@@ -20,10 +20,15 @@ ___
 - __`tfspaper_whisper.ipynb`__: whisper paper figures
 
 ___
+### Old Plotting Scripts
+- `tfsplt_encoding-eric.py`: encoding script trying to replicate Eric's paper results
+
+___
 ### Plotting Scripts (core scripts bolded)
 - __`tfsplt_brainmap.py`__: brainmap script
 - `tfsplt_colors-test.ipynb`: testing colors for encoding plots
-- `tfsplt_encoding_twosplit.py`: encoding script variant (two splits)
+- `tfsplt_encoding-layers.py`: encoding script variant (two splits)
+- `tfsplt_encoding-twosplit.py`: encoding script variant (layers with colorbar)
 - __`tfsplt_encoding.py`__: main encoding script
 - __`tfsplt_utils.py`__: utils for color and pickle loading/saving
 
