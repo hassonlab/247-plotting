@@ -378,6 +378,7 @@ plot_layers:
 
 
 plot-encoding-layers:
+	rm -f results/figures/*
 	python scripts/tfsplt_encoding-layers.py \
 		--sid 625 676 7170 798 \
 		--formats \
@@ -385,7 +386,8 @@ plot-encoding-layers:
 			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-676-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
 			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-7170-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
 			'data/encoding/tfs/20230520-whisper-medium/kw-tfs-full-798-whisper-medium.en-encoder-lag5k-25-all-%s/*/*_%s.csv' \
-		--labels $(shell seq 0 24)\
+		--labels $(shell seq 0 24) \
+		--colors viridis \
 		--keys comp prod \
 		--sig-elec-file-dir $(SIG_FN_DIR)\
 		$(SIG_FN) \
@@ -396,5 +398,5 @@ plot-encoding-layers:
 		$(LAG_TKS) \
 		$(LAG_TK_LABLS) \
 		--y-vals-limit $(Y_LIMIT) \
-		--outfile results/figures/tfs-whisper-medium-layers.pdf
+		--outfile results/figures/tfs-whisper-encoder-layers-2s.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
