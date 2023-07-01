@@ -415,20 +415,20 @@ def plot_maxidx(args, df, pdf):
             ax.set_ylim(-0.25, int(args.labels[-1]) + 0.25)
             ax.axvline(0, ls="dashed", alpha=0.3, c="k")
 
-        norm = mpl.colors.Normalize(vmin=args.labels[0], vmax=args.labels[-1])
-        sm = mpl.cm.ScalarMappable(norm=norm, cmap=args.colors)
-        ticks = np.linspace(args.labels[0], args.labels[-1], 4).astype(int)
-        plt.colorbar(
-            sm,
-            ax=fig.get_axes(),
-            fraction=0.03,
-            pad=0.02,
-            ticks=ticks,
-            label="Layers",
-        )
+    norm = mpl.colors.Normalize(vmin=args.labels[0], vmax=args.labels[-1])
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=args.colors)
+    ticks = np.linspace(args.labels[0], args.labels[-1], 4).astype(int)
+    plt.colorbar(
+        sm,
+        ax=fig.get_axes(),
+        fraction=0.03,
+        pad=0.02,
+        ticks=ticks,
+        label="Layers",
+    )
 
-        pdf.savefig(fig)
-        plt.close()
+    pdf.savefig(fig)
+    plt.close()
     return pdf
 
 
@@ -449,7 +449,7 @@ def main():
     pdf = plot_average_encoding_heatmap(args, df, pdf)
     pdf = plot_average_max(args, df, pdf)
     # pdf = plot_electrodes_encoding(args, df, pdf)
-    pdf = plot_maxidx(args, df, pdf)
+    # pdf = plot_maxidx(args, df, pdf)
 
     pdf.close()
 
