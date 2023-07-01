@@ -11,8 +11,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 
-def read_sig_file(filename, old_results=False):
-    sig_file = pd.read_csv("data/" + filename)
+def read_sig_file(filename, filedir, old_results=False):
+    sig_file = pd.read_csv(os.path.join(filedir, filename))
     sig_file["sid_electrode"] = (
         sig_file["subject"].astype(str) + "_" + sig_file["electrode"]
     )
@@ -24,7 +24,7 @@ def read_sig_file(filename, old_results=False):
     return set(elecs)
 
 
-def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, mode, type):
+def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, key, type):
     elec = os.path.basename(file_name).replace(".csv", "")[:-5]
     if (  # Skip electrodes if they're not part of the sig list
         len(sigelecs)
@@ -38,7 +38,7 @@ def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, mode, type):
     # if df.max(axis=1)[0] < 0.1:
     #     return None
     df.insert(0, "sid", load_sid)
-    df.insert(0, "mode", mode)
+    df.insert(0, "key", key)
     df.insert(0, "electrode", elec)
     df.insert(0, "label", label)
     df.insert(0, "type", type)
@@ -77,7 +77,7 @@ def read_folder(
     sigelecs_key,
     load_sid="load_sid",
     label="label",
-    mode="mode",
+    key="key",
     type="all",
     parallel=True,
 ):
@@ -95,7 +95,7 @@ def read_folder(
                 sigelecs_key=sigelecs_key,
                 load_sid=load_sid,
                 label=label,
-                mode=mode,
+                key=key,
                 type=type,
             ),
             files,
@@ -111,7 +111,7 @@ def read_folder(
                     sigelecs_key,
                     load_sid,
                     label,
-                    mode,
+                    key,
                     type,
                 )
             )
