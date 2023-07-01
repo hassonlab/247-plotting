@@ -24,11 +24,6 @@ sync-data:
 	rsync -rav /projects/HASSON/247/plotting/* data/plotting/
 
 
-# copy demo data
-link-demo:
-	mkdir -p data/encoding/tfs
-	rsync -rav /projects/HASSON/247/ken-encoding/demo/* data/encoding/tfs/
-
 
 ######################################################################################
 #####################################  Embedding  ####################################
