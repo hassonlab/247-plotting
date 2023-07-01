@@ -13,7 +13,6 @@ For more detailed tutorials about folder structure and producing plots, check [w
 
 ___
 ### Paper Notebooks
-- __`tfspaper_whisper_method.ipynb`__: whisper paper method figure
 - __`tfspaper_whisper.ipynb`__: whisper paper figures
 
 ___
