@@ -24,7 +24,7 @@ def read_sig_file(filename, filedir, old_results=False):
     return set(elecs)
 
 
-def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, key, type):
+def read_file(file_name, sigelecs, sigelecs_key, load_sid, key, label1, label2):
     elec = os.path.basename(file_name).replace(".csv", "")[:-5]
     if (  # Skip electrodes if they're not part of the sig list
         len(sigelecs)
@@ -40,8 +40,8 @@ def read_file(file_name, sigelecs, sigelecs_key, load_sid, label, key, type):
     df.insert(0, "sid", load_sid)
     df.insert(0, "key", key)
     df.insert(0, "electrode", elec)
-    df.insert(0, "label", label)
-    df.insert(0, "type", type)
+    df.insert(0, "label1", label1)
+    df.insert(0, "label2", label2)
 
     return df
 
@@ -76,9 +76,9 @@ def read_folder(
     sigelecs,
     sigelecs_key,
     load_sid="load_sid",
-    label="label",
     key="key",
-    type="all",
+    label1="label1",
+    label2="label2",
     parallel=True,
 ):
     files = glob.glob(fname)
@@ -94,9 +94,9 @@ def read_folder(
                 sigelecs=sigelecs,
                 sigelecs_key=sigelecs_key,
                 load_sid=load_sid,
-                label=label,
                 key=key,
-                type=type,
+                label1=label1,
+                label2=label2,
             ),
             files,
         ):
@@ -110,9 +110,9 @@ def read_folder(
                     sigelecs,
                     sigelecs_key,
                     load_sid,
-                    label,
                     key,
-                    type,
+                    label1,
+                    label2,
                 )
             )
 

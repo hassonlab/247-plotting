@@ -161,6 +161,13 @@ def get_sigelecs(args):
     sigelecs = {}
     if len(args.sig_elec_file) == 0:
         pass
+    elif len(args.sig_elec_file) == len(args.unique_keys):
+        for sid in args.sid:
+            for fname, key in zip(args.sig_elec_file, args.unique_keys):
+                filename = fname % sid
+                sigelecs[(sid, key)] = read_sig_file(
+                    filename, args.sig_elec_file_dir
+                )
     elif len(args.sig_elec_file) == len(args.sid) * len(args.unique_keys):
         sid_key_tup = [x for x in itertools.product(args.sid, args.unique_keys)]
         for fname, sid_key in zip(args.sig_elec_file, sid_key_tup):
@@ -231,31 +238,42 @@ def aggregate_data(args):
         df (DataFrame): df with all encoding results
     """
     print("Aggregating data")
+
+    def read_file(fname):
+        files = glob.glob(fname)
+        assert (
+            len(files) > 0
+        ), f"No results found under {fname}"  # check files exist under format
+
+        for resultfn in files:
+            elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # Skip electrodes if they're not part of the sig list
+            if (
+                len(args.sigelecs)
+                and elec not in args.sigelecs[(load_sid, key)]
+            ):
+                continue
+            df = pd.read_csv(resultfn, header=None)
+            df.insert(0, "sid", load_sid)
+            df.insert(0, "key", key)
+            df.insert(0, "electrode", elec)
+            df.insert(0, "label", label)
+            data.append(df)
+
     data = []
 
-    for fmt, label in zip(args.formats, args.labels):
-        load_sid = get_sid(fmt, args)
-        for key in args.keys:
-            fname = fmt % key
-            files = glob.glob(fname)
-            assert (
-                len(files) > 0
-            ), f"No results found under {fname}"  # check files exist under format
-
-            for resultfn in files:
-                elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
-                # Skip electrodes if they're not part of the sig list
-                if (
-                    len(args.sigelecs)
-                    and elec not in args.sigelecs[(load_sid, key)]
-                ):
-                    continue
-                df = pd.read_csv(resultfn, header=None)
-                df.insert(0, "sid", load_sid)
-                df.insert(0, "key", key)
-                df.insert(0, "electrode", elec)
-                df.insert(0, "label", label)
-                data.append(df)
+    if len(args.labels) / len(args.unique_labels) == len(args.sid):
+        for fmt, label in zip(args.formats, args.labels):
+            load_sid = get_sid(fmt, args)
+            for key in args.keys:
+                fname = fmt % key
+                read_file(fname)
+    else:
+        for load_sid in args.sid:
+            for fmt, label in zip(args.formats, args.labels):
+                for key in args.keys:
+                    fname = fmt % (load_sid, key)
+                    read_file(fname)
 
     if not len(data):
         print("No data found")
@@ -287,7 +305,7 @@ def organize_data(args, df):
             if element in args.lags_show
         ]
         df = df.loc[:, chosen_lag_idx]  # chose from lags to show for the plot
-        assert len(args.x_vals_show) == len(
+        assert len(args.lags_show) == len(
             df.columns
         ), "args.lags_show length must be the same size as trimmed df column number"
 

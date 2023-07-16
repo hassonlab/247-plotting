@@ -141,6 +141,7 @@ data/*
 *.csv
 *.png
 *.txt
+*.html
 
 !.gitkeep
 .cache
