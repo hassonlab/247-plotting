@@ -138,6 +138,10 @@ Results
 results/*
 logs/*
 data/*
+*.csv
+*.png
+*.txt
+*.html
 
 !.gitkeep
 .cache

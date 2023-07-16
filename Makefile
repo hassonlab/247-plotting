@@ -111,7 +111,7 @@ concat-lags:
 
 # For a more detailed explanation of the plotting arguments, look here: https://github.com/hassonlab/247-plotting/wiki/Encoding-Arguments
 
-# LAGS_PLT: lags to plot (should have the same lags as the data files from formats)
+# LAGS_PLT: lags from encoding (should have the same lags as the data files from formats)
 # LAGS_SHOW: lags to show in plot (lags that we want to plot, could be all or part of LAGS_PLT)
 
 # X_VALS_SHOW: x-values for those lags we want to plot (same length as LAGS_SHOW) \
@@ -122,8 +122,8 @@ concat-lags:
 # LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
 
 LAGS_PLT := {-10000..10000..25} # lag10k-25
-LAGS_PLT := {-2000..2000..25} # lag2k-25
 LAGS_PLT := {-5000..5000..25} # lag5k-25
+LAGS_PLT := {-2000..2000..25} # lag2k-25
 
 # Plotting for vanilla encoding (no concatenated lags)
 LAGS_SHOW := $(LAGS_PLT)
@@ -132,10 +132,10 @@ LAG_TKS :=
 LAG_TK_LABLS :=
 
 # zoomed-in version (from -2s to 2s)
-LAGS_SHOW := {-2000..2000..25}
-X_VALS_SHOW := {-2000..2000..25}
-LAG_TKS := 
-LAG_TK_LABLS :=
+# LAGS_SHOW := {-2000..2000..25}
+# X_VALS_SHOW := {-2000..2000..25}
+# LAG_TKS := 
+# LAG_TK_LABLS :=
 
 # Line color by (Choose what lines colors are decided by) (required) (labels or keys)
 # Line style by (Choose what line styles are decided by) (required) (labels or keys)
@@ -152,16 +152,17 @@ Y_LIMIT := 0
 FIG_SZ:= 15 6
 FIG_SZ:= 18 6
 
-# Significant electrode file directory and significant electrode files
+# Significant electrode file directory
+SIG_FN_DIR := 'data/plotting/sig-elecs'
 SIG_FN_DIR := 'data/plotting/sig-elecs/20230510-tfs-sig-file'
 SIG_FN_DIR := 'data/plotting/sig-elecs/20230413-whisper-paper'
 
-# Note: when providing sig elec files, provide them in the (sid keys) combination order \
-For instance, if sid = 625 676, keys = comp prod \
-sig elec files should be in this order: (625 comp)(625 prod)(676 comp)(676 prod) \
-The number of sig elec files should also equal # of sid * # of keys
+# Significant electrode files
 SIG_FN := 
-SIG_FN := --sig-elec-file tfs-sig-file-625-whisper-de-best-0.01-comp.csv tfs-sig-file-625-whisper-de-best-0.01-prod.csv tfs-sig-file-676-whisper-de-best-0.01-comp.csv tfs-sig-file-676-whisper-de-best-0.01-prod.csv tfs-sig-file-7170-whisper-de-best-0.01-comp.csv tfs-sig-file-7170-whisper-de-best-0.01-prod.csv tfs-sig-file-798-whisper-de-best-0.01-comp.csv tfs-sig-file-798-whisper-de-best-0.01-prod.csv
+SIG_FN := --sig-elec-file tfs-sig-file-%s-whisper-en-last-0.01-comp.csv tfs-sig-file-%s-whisper-de-best-0.01-prod.csv
+SIG_FN := --sig-elec-file podcast_160.csv
+SIG_FN := --sig-elec-file tfs-sig-file-glove-%s-comp.csv tfs-sig-file-glove-%s-prod.csv
+SIG_FN := --sig-elec-file tfs-sig-file-%s-whisper-ende-outer-comp.csv tfs-sig-file-%s-whisper-ende-outer-prod.csv
 
 
 plot-encoding:
@@ -182,32 +183,7 @@ plot-encoding:
 		$(LAG_TK_LABLS) \
 		$(PLT_PARAMS) \
 		--y-vals-limit $(Y_LIMIT) \
-		--outfile results/figures/tfs-glove-probimprob.pdf
-	rsync -av results/figures/ ~/tigress/247-encoding-results/
-
-
-plot-encoding-twosplit:
-	rm -f results/figures/*
-	python scripts/tfsplt_encoding-twosplit.py \
-		--sid 625 676 7170 798 \
-		--formats \
-			'data/encoding/tfs//*/*_%s.csv' \
-		--keys \
-			'key1 key2 key3' \
-		--sig-elec-file-dir $(SIG_FN_DIR)\
-		$(SIG_FN) \
-		--fig-size $(FIG_SZ) \
-		--lags-plot $(LAGS_PLT) \
-		--lags-show $(LAGS_SHOW) \
-		--x-vals-show $(X_VALS_SHOW) \
-		$(LAG_TKS) \
-		$(LG_TK_LABLS) \
-		--y-vals-limit $(Y_LIMIT) \
-		--lc-by 0 \
-		--ls-by 1 \
-		--split-hor 1 \
-		--split-ver 2 \
-		--outfile results/figures/tfs-encoding-twosplit.pdf
+		--outfile results/figures/tfs-encoding.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
 
 
@@ -230,4 +206,31 @@ plot-encoding-layers:
 		$(LAG_TK_LABLS) \
 		--y-vals-limit $(Y_LIMIT) \
 		--outfile results/figures/tfs-encoding-layers.pdf
+	rsync -av results/figures/ ~/tigress/247-encoding-results/
+
+
+plot-brainmap:
+	rm -f results/figures/*
+	python scripts/tfsplt_brainmap.py \
+		--sid 625 676 7170 798 \
+		--formats \
+			'/data/encoding/tfs//*/*_%s.csv' \
+		--effect max \
+		--keys comp prod \
+		--lags-plot $(LAGS_PLT) \
+		--lags-show $(LAGS_SHOW) \
+		--sig-elec-file-dir $(SIG_FN_DIR) \
+		$(SIG_FN) \
+		--outfile fig_%s.png
+	rsync -av results/figures/ ~/tigress/247-encoding-results/
+
+
+plot-brainmap-subjects:
+	rm -f results/figures/*
+	python scripts/tfsplt_brainmap_cat.py \
+		--sid 625 676 7170 798 \
+		--keys comp prod \
+		--sig-elec-file-dir $(SIG_FN_DIR) \
+		$(SIG_FN) \
+		--outfile fig_%s.png
 	rsync -av results/figures/ ~/tigress/247-encoding-results/

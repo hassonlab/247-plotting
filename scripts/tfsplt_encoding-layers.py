@@ -17,7 +17,7 @@ from tfsplt_utils import (
     get_con_color,
     read_folder,
 )
-from tfsplt_encoding import get_sigelecs, get_sid, get_elecbrain
+from tfsplt_encoding import get_sigelecs, get_elecbrain
 
 
 # -----------------------------------------------------------------------------
@@ -49,9 +49,7 @@ def arg_parser():
     parser.add_argument("--x-vals-show", nargs="+", type=float, required=True)
     parser.add_argument("--lag-ticks", nargs="+", type=float, default=[])
     parser.add_argument("--lag-tick-labels", nargs="+", type=int, default=[])
-    parser.add_argument(
-        "--y-vals-limit", nargs="+", type=float, default=[0, 0.3]
-    )
+    parser.add_argument("--y-vals-limit", nargs="+", type=float, default=[0, 0.3])
     parser.add_argument("--outfile", default="results/figures/tfs-encoding.pdf")
     args = parser.parse_args()
 
@@ -67,9 +65,7 @@ def arg_assert(args):
     Returns:
     """
     assert len(args.fig_size) == 2
-    assert len(args.formats) == len(
-        args.sid
-    ), "Need same number of labels as subjects"
+    assert len(args.formats) == 1, "Need exactly 1 format"
     assert len(args.lags_show) == len(
         args.x_vals_show
     ), "Need same number of lags values and x values"
@@ -134,6 +130,7 @@ def set_up_environ(args):
     args = get_cmap_smap(args)  # get color and style map
     args = get_sigelecs(args)  # get significant electrodes
     arg_assert(args)  # sanity checks
+    args.formats = args.formats[0]
 
     return args
 
@@ -154,11 +151,10 @@ def aggregate_data(args, parallel=False):
     """
     data = []
     print("Aggregating data")
-    for fmt in args.formats:
+    for load_sid in args.sid:
         for key in args.unique_keys:
             for layer in args.unique_labels:
-                load_sid = get_sid(fmt, args)
-                fname = fmt % (layer, key)
+                fname = args.formats % (load_sid, layer, key)
                 data = read_folder(
                     data,
                     fname,
@@ -276,16 +272,12 @@ def plot_average_encoding_heatmap(args, df, pdf):
     """
     print(f"Plotting Average Encoding Heatmap split by key")
     xticks = np.linspace(0, len(args.x_vals_show) - 1, 5)
-    xticklabels = np.round(
-        np.linspace(args.x_vals_show[0], args.x_vals_show[-1], 5), 1
-    )
+    xticklabels = np.round(np.linspace(args.x_vals_show[0], args.x_vals_show[-1], 5), 1)
     df.columns = args.x_vals_show
     fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
     for ax, (plot, subdf) in zip(axes, df.groupby("key", axis=0)):
         heatmapdf = subdf.groupby("label").mean()
-        sns.heatmap(
-            heatmapdf, cmap=args.colors, linewidths=0, rasterized=True, ax=ax
-        )
+        sns.heatmap(heatmapdf, cmap=args.colors, linewidths=0, rasterized=True, ax=ax)
         ax.invert_yaxis()
         ax.set_xticks(xticks)
         ax.set_xticklabels(xticklabels)
@@ -349,9 +341,7 @@ def plot_electrodes_encoding(args, df, pdf):
     """
     print(f"Plotting Individual Elecs Encoding split by keys")
     for (electrode, sid), subdf in df.groupby(["electrode", "sid"], axis=0):
-        fig, axes = plt.subplots(
-            1, len(args.unique_keys), figsize=args.fig_size
-        )
+        fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
         for _, (key, subsubdf) in zip(axes, subdf.groupby("key")):
             ax = axes[args.unique_keys.index(key)]
             for row, values in subsubdf.iterrows():
@@ -368,9 +358,7 @@ def plot_electrodes_encoding(args, df, pdf):
                 ax.set_xticklabels(args.lag_tick_labels)
             ax.axhline(0, ls="dashed", alpha=0.3, c="k")
             ax.axvline(0, ls="dashed", alpha=0.3, c="k")
-            ax.set_ylim(
-                args.y_vals_limit[0] - 0.05, args.y_vals_limit[1] + 0.05
-            )
+            ax.set_ylim(args.y_vals_limit[0] - 0.05, args.y_vals_limit[1] + 0.05)
             ax.set(
                 xlabel="Lag (s)",
                 ylabel="Correlation (r)",

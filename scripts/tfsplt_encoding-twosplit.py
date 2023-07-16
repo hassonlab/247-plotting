@@ -83,6 +83,7 @@ def arg_assert(args):
     assert len(args.lag_ticks) == len(
         args.lag_tick_labels
     ), "Need same number of lag ticks and lag tick labels"
+    assert args.split_hor != args.split_ver, "Split by different labels"
 
     return args
 
@@ -132,8 +133,13 @@ def get_sigelecs(args):
     sigelecs = {}
     if len(args.sig_elec_file) == 0:
         pass
-    elif len(args.sig_elec_file) == len(args.sid) * len(args.unique_keys[1]):
-        sid_key_tup = [x for x in itertools.product(args.sid, args.unique_keys[1])]
+    elif len(args.sig_elec_file) == len(args.unique_keys[0]):
+        for sid in args.sid:
+            for fname, key in zip(args.sig_elec_file, args.unique_keys[0]):
+                filename = fname % sid
+                sigelecs[(sid, key)] = read_sig_file(filename, args.sig_elec_file_dir)
+    elif len(args.sig_elec_file) == len(args.sid) * len(args.unique_keys[0]):
+        sid_key_tup = [x for x in itertools.product(args.sid, args.unique_keys[0])]
         for fname, sid_key in zip(args.sig_elec_file, sid_key_tup):
             sigelecs[sid_key] = read_sig_file(fname, args.sig_elec_file_dir)
     else:
@@ -167,6 +173,16 @@ def set_up_environ(args):
     args = get_sigelecs(args)  # get significant electrodes
     arg_assert(args)  # some sanity checks
 
+    label = ["key", "label1", "label2"]
+    label_idx = [2, 3, 4]
+    label.pop(args.split_ver)
+    label_idx.pop(args.split_ver)
+    label.pop(args.split_hor)
+    label_idx.pop(args.split_hor)
+    assert len(label) == len(label_idx) == 1
+    args.label = label[0]
+    args.label_idx = label_idx[0]
+
     return args
 
 
@@ -186,20 +202,20 @@ def aggregate_data(args, parallel=False):
     """
     data = []
     print("Aggregating data")
-    for fmt, label in zip(args.formats, args.keys):
-        load_sid = get_sid(fmt, args)
-        fname = fmt % label[1]
-        data = read_folder(
-            data,
-            fname,
-            args.sigelecs,
-            (load_sid, label[1]),
-            load_sid,
-            label[0],
-            label[1],
-            label[2],
-            parallel,
-        )
+    for load_sid in args.sid:
+        for fmt, label in zip(args.formats, args.keys):
+            fname = fmt % (load_sid, label[0])
+            data = read_folder(
+                data,
+                fname,
+                args.sigelecs,
+                (load_sid, label[0]),
+                load_sid,
+                label[0],
+                label[1],
+                label[2],
+                parallel,
+            )
     if not len(data):
         print("No data found")
         exit(1)
@@ -218,7 +234,7 @@ def organize_data(args, df):
         df (DataFrame): df with correct columns (lags)
     """
     df.set_index(
-        ["sid", "electrode", "label", "key", "type"],
+        ["sid", "electrode", "key", "label1", "label2"],
         inplace=True,
     )
 
@@ -246,6 +262,17 @@ def organize_data(args, df):
 # -----------------------------------------------------------------------------
 
 
+def get_split_idx(args, split_hor_key, split_ver_key):
+    index_slice = [
+        slice(None, None, None),
+        slice(None, None, None),
+        slice(None, None, None),
+    ]
+    index_slice.insert(args.split_ver + 2, split_ver_key)
+    index_slice.insert(args.split_hor + 2, split_hor_key)
+    return tuple(index_slice)
+
+
 def plot_average_split_by_key(args, df, pdf):
     """Plot average encoding with horizontal and vertical split
 
@@ -257,6 +284,7 @@ def plot_average_split_by_key(args, df, pdf):
     Returns:
         pdf (PDFPage): pdf with correct average plot added
     """
+    print(f"Plotting Average Encoding split by key")
     fig, axes = plt.subplots(
         len(args.unique_keys[args.split_ver]),
         len(args.unique_keys[args.split_hor]),
@@ -265,16 +293,8 @@ def plot_average_split_by_key(args, df, pdf):
     for i, split_ver_key in enumerate(args.unique_keys[args.split_ver]):
         for j, split_hor_key in enumerate(args.unique_keys[args.split_hor]):
             ax = axes[i, j]
-            idx = pd.IndexSlice
-            if args.split_ver == 2:
-                subdf = df.loc[
-                    idx[:, :, :, split_hor_key, split_ver_key], :
-                ]  # need to modify
-            elif args.split_ver == 0:
-                subdf = df.loc[
-                    idx[:, :, split_ver_key, split_hor_key, :], :
-                ]  # need to modify
-            for label, subsubdf in subdf.groupby("label", axis=0):
+            subdf = df.loc[get_split_idx(args, split_hor_key, split_ver_key), :]
+            for label, subsubdf in subdf.groupby(args.label, axis=0):
                 vals = subsubdf.mean(axis=0)
                 err = subsubdf.sem(axis=0)
                 key = (
@@ -324,6 +344,7 @@ def plot_electrodes_split_by_key(args, df, pdf):
     Returns:
         pdf (PDFPage): pdf with correct plots added
     """
+    print(f"Plotting Individual Elecs split by key")
     for (electrode, sid), subdf in df.groupby(["electrode", "sid"], axis=0):
         fig, axes = plt.subplots(
             len(args.unique_keys[args.split_ver]),
@@ -333,16 +354,10 @@ def plot_electrodes_split_by_key(args, df, pdf):
         for i, split_ver_key in enumerate(args.unique_keys[args.split_ver]):
             for j, split_hor_key in enumerate(args.unique_keys[args.split_hor]):
                 ax = axes[i, j]
-                idx = pd.IndexSlice
                 try:
-                    if args.split_ver == 2:
-                        subsubdf = subdf.loc[
-                            idx[:, :, :, split_hor_key, split_ver_key], :
-                        ]  # need to modify
-                    elif args.split_ver == 0:
-                        subsubdf = subdf.loc[
-                            idx[:, :, split_ver_key, split_hor_key, :], :
-                        ]  # need to modify
+                    subsubdf = subdf.loc[
+                        get_split_idx(args, split_hor_key, split_ver_key), :
+                    ]
                 except:
                     continue
                 for row, values in subsubdf.iterrows():
@@ -350,7 +365,7 @@ def plot_electrodes_split_by_key(args, df, pdf):
                     ax.plot(
                         args.x_vals_show,
                         values,
-                        label=row[2],
+                        label=row[args.label_idx],
                         color=args.cmap[key],
                         ls=args.smap[key],
                     )
