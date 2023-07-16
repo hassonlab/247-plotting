@@ -214,14 +214,15 @@ plot-brainmap:
 	python scripts/tfsplt_brainmap.py \
 		--sid 625 676 7170 798 \
 		--formats \
-			'/projects/HASSON/247/ken-encoding/demo/stock-glove/kw-tfs-full-%s-glove50-lag2k-25-all/*/*_%s.csv' \
+			'/data/encoding/tfs//*/*_%s.csv' \
 		--effect max \
 		--keys comp prod \
 		--lags-plot $(LAGS_PLT) \
 		--lags-show $(LAGS_SHOW) \
 		--sig-elec-file-dir $(SIG_FN_DIR) \
 		$(SIG_FN) \
-		--outfile glove_%s.png
+		--outfile fig_%s.png
+	rsync -av results/figures/ ~/tigress/247-encoding-results/
 
 
 plot-brainmap-subjects:
@@ -231,4 +232,5 @@ plot-brainmap-subjects:
 		--keys comp prod \
 		--sig-elec-file-dir $(SIG_FN_DIR) \
 		$(SIG_FN) \
-		--outfile tfs_%s.png
+		--outfile fig_%s.png
+	rsync -av results/figures/ ~/tigress/247-encoding-results/
