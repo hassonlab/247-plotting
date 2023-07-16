@@ -15,7 +15,8 @@ ___
 
 ___
 ### Core Plotting Scripts
-- __`tfsplt_brainmap_cat.py`__: brainmap script for electrode categories
+- __`tfsplt_brainmap.py`__: brainmap script for electrode with colorscale
+- __`tfsplt_brainmap_cat.py`__: brainmap script for electrode with legends
 - __`tfsplt_encoding.py`__: main encoding script
 - __`tfsplt_utils.py`__: utils for color and pickle loading/saving
 
