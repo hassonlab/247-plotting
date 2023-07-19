@@ -1,20 +1,16 @@
 import argparse
-import glob
 import os
 
 import numpy as np
 import pandas as pd
-from scipy.io import loadmat
 import plotly.graph_objects as go
 import plotly.express as px
 
-from tfsplt_encoding import organize_data
 from tfsplt_brainmap import (
     Colorbar,
     read_coor,
     load_surf,
     plot_surf,
-    filter_df,
     update_properties,
 )
 
@@ -54,8 +50,7 @@ def set_up_environ(args):
         args (namespace): commandline arguments
     """
     args.sig_elec_file = [
-        os.path.join(args.sig_elec_file_dir, file)
-        for file in args.sig_elec_file
+        os.path.join(args.sig_elec_file_dir, file) for file in args.sig_elec_file
     ]
 
     # Additional args
@@ -112,43 +107,12 @@ def get_sigelec_df(args):
     return df
 
 
-def get_effect(args, df):
-    """Getting the correct colorsplit brainmap plot
-
-    Args:
-        args (namespace): commandline arguments
-        df (DataFrame): DataFrame with electrode and effect
-
-    Returns:
-        None
-    """
-    # Get qualitative color list (https://plotly.com/python/discrete-color/)
-    color_list = px.colors.qualitative.Light24  # 24 colors
-    color_list = px.colors.qualitative.Plotly  # 10 colors
-    color_list = px.colors.qualitative.D3  # 10 colors
-
-    # Get effect and set up color split
-    color_split = []
-
-    for idx, val in enumerate(sorted(df.effect.unique())):
-        cbar = Colorbar(
-            title=f"{val}",
-            colorscale=[[0, color_list[idx]], [1, color_list[idx]]],
-            bar_min=val,
-            bar_max=val,
-        )
-        color_split.append(cbar)
-        color_split.append(val + 1)
-    args.color_split = color_split
-    return
-
-
 # -----------------------------------------------------------------------------
 # Brain Map
 # -----------------------------------------------------------------------------
 
 
-def plot_electrodes(fig, df, cbar, brain_type):
+def plot_electrodes(fig, df, color, brain_type):
     """Plot electrodes onto figure
 
     Args:
@@ -167,13 +131,11 @@ def plot_electrodes(fig, df, cbar, brain_type):
         assert len(df.subject.unique()) == 1  # only 1 subject
     r = 1.5
     legend_show = True
-    for elecname, center_x, center_y, center_z, effect, subject in zip(
-        df.electrode,
+    for center_x, center_y, center_z, effect in zip(
         df[f"{coor_type}_X"],
         df[f"{coor_type}_Y"],
         df[f"{coor_type}_Z"],
         df.effect,
-        df.subject,
     ):
         u, v = np.mgrid[0 : 2 * np.pi : 26j, 0 : np.pi : 26j]
         x = r * np.cos(u) * np.sin(v) + center_x
@@ -184,10 +146,10 @@ def plot_electrodes(fig, df, cbar, brain_type):
                 x=x,
                 y=y,
                 z=z,
-                surfacecolor=np.full(shape=z.shape, fill_value=effect),
-                name=str(subject),
-                legendgroup=str(subject),
-                colorscale=cbar.colorscale,
+                surfacecolor=np.full(shape=z.shape, fill_value=color),
+                name=str(effect),
+                legendgroup=str(effect),
+                colorscale=[[0, color], [1, color]],
                 showlegend=legend_show,
                 showscale=False,
             )
@@ -197,7 +159,7 @@ def plot_electrodes(fig, df, cbar, brain_type):
     return fig
 
 
-def plot_brainmap(args, df, outfile):
+def plot_brainmap_cat(args, df, outfile):
     """Plot brainmap plot given a df file with coordinates and effects
 
     Args:
@@ -216,12 +178,8 @@ def plot_brainmap(args, df, outfile):
         fig = plot_surf(fig, surf2)
 
     # Plot Electrodes and Colorbars
-    for cbar in args.color_split:  # Loop through Colorbars
-        if not isinstance(cbar, Colorbar):
-            continue
-        else:  # filter for the values in range
-            df_colorscale = filter_df(df, cbar, args.color_split)
-        fig = plot_electrodes(fig, df_colorscale, cbar, args.brain_type)
+    for (_, df_colorscale), color in zip(df.groupby(df.effect), args.colors):
+        fig = plot_electrodes(fig, df_colorscale, color, args.brain_type)
 
     # Save Plot
     fig = update_properties(fig)
@@ -234,7 +192,7 @@ def plot_brainmap(args, df, outfile):
     return fig
 
 
-def make_brainmap(args, df, outfile=""):
+def make_brainmap_cat(args, df, outfile=""):
     """Plot and Save brainmap plot given a pandas Series of effects
 
     Args:
@@ -277,7 +235,7 @@ def make_brainmap(args, df, outfile=""):
     print(f"Number of electrodes for plotting: {len(df_plot)}")
 
     # Plot Brainmap
-    fig = plot_brainmap(args, df_plot, outfile=outfile)
+    fig = plot_brainmap_cat(args, df_plot, outfile=outfile)
     return fig
 
 
@@ -291,14 +249,15 @@ def main():
 
     df["effect"] = df.subject.astype(int)
     df.loc[df.effect == 7170, "effect"] = 717  # fix for 717
-    get_effect(args, df)
+    color_list = px.colors.qualitative.D3  # 10 colors
+    args.colors = color_list
 
     for key in args.keys:
         try:
             outfile = args.outfile % key
         except:
             outfile = args.outfile
-        make_brainmap(
+        make_brainmap_cat(
             args,
             df.loc[df.key == key, ("subject", "electrode", "effect")],
             outfile,
