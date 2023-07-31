@@ -208,7 +208,11 @@ def make_brainmap_cat(args, df, outfile=""):
         return
     print(f"Number of electrodes for encoding: {len(df)}")
     if args.project == "tfs":
-        df.loc[df.subject == 7170, "subject"] = 717  # fix for 717
+        df = df.assign(
+            subject=df.electrode.str.split("_", n=1, expand=True)[0],
+            electrode=df.electrode.str.split("_", n=1, expand=True)[1],
+        )
+        df.loc[df.subject == "7170", "subject"] = 717  # fix for 717
 
         # Get Electrode Coordinate Files
         subjects = df.subject.unique()
@@ -221,7 +225,6 @@ def make_brainmap_cat(args, df, outfile=""):
             right_on=["subject", "name"],
         )
     elif args.project == "podcast":
-        df["electrode"] = df.subject.astype(str) + "_" + df.electrode
         df_coor = pd.read_csv(  # Get Electrode Coordinate File
             os.path.join(args.main_dir, "777/777_ave.txt"), sep=" ", header=None
         )
