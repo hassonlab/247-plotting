@@ -360,6 +360,7 @@ def plot_electrodes(fig, df, cbar, brain_type):
         coor_type = "T1"
         assert len(df.subject.unique()) == 1  # only 1 subject
     r = 1.5
+    colorbar_show = True
     for elecname, center_x, center_y, center_z, effect in zip(
         df.electrode,
         df[f"{coor_type}_X"],
@@ -380,8 +381,10 @@ def plot_electrodes(fig, df, cbar, brain_type):
                 name=elecname,
                 legendgroup=cbar.title,
                 colorscale=cbar.colorscale,
+                showscale=colorbar_show,
             )
         )
+        colorbar_show = False
 
     return fig
 
@@ -573,7 +576,7 @@ def make_brainmap(args, df, outfile=""):
         )
         df_coor.columns = ["electrode", "MNI_X", "MNI_Y", "MNI_Z", "Area"]
         df_plot = pd.merge(  # merge two files
-            df.loc[:, ("subject", "electrode", "effect")],
+            df.loc[:, ("electrode", "effect")],
             df_coor,
             how="inner",
             on="electrode",

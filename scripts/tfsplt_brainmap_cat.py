@@ -230,7 +230,7 @@ def make_brainmap_cat(args, df, outfile=""):
         )
         df_coor.columns = ["electrode", "MNI_X", "MNI_Y", "MNI_Z", "Area"]
         df_plot = pd.merge(  # merge two files
-            df.loc[:, ("subject", "electrode", "effect")],
+            df.loc[:, ("electrode", "effect")],
             df_coor,
             how="inner",
             on="electrode",

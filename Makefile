@@ -50,7 +50,7 @@ AGGR_TYPE := ave
 
 
 CMD := echo
-CMD := sbatch submit1.sh
+CMD := sbatch submit.sh
 CMD := python
 
 
@@ -74,6 +74,10 @@ emb-class-layers:
 			--savedir results/paper-whisper \
 			--layer $$layer; \
 	done;
+
+
+emb-class-new:
+	$(CMD) scripts/tfsemb_class-preds.py
 
 
 
@@ -121,9 +125,9 @@ concat-lags:
 # LAG_TKS: lag ticks (tick marks to show on the x-axis) (optional)
 # LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
 
+LAGS_PLT := {-2000..2000..25} # lag2k-25
 LAGS_PLT := {-10000..10000..25} # lag10k-25
 LAGS_PLT := {-5000..5000..25} # lag5k-25
-LAGS_PLT := {-2000..2000..25} # lag2k-25
 
 # Plotting for vanilla encoding (no concatenated lags)
 LAGS_SHOW := $(LAGS_PLT)
@@ -132,10 +136,10 @@ LAG_TKS :=
 LAG_TK_LABLS :=
 
 # zoomed-in version (from -2s to 2s)
-# LAGS_SHOW := {-2000..2000..25}
-# X_VALS_SHOW := {-2000..2000..25}
-# LAG_TKS := 
-# LAG_TK_LABLS :=
+LAGS_SHOW := {-2000..2000..25}
+X_VALS_SHOW := {-2000..2000..25}
+LAG_TKS := 
+LAG_TK_LABLS :=
 
 # Line color by (Choose what lines colors are decided by) (required) (labels or keys)
 # Line style by (Choose what line styles are decided by) (required) (labels or keys)
@@ -156,22 +160,24 @@ FIG_SZ:= 18 6
 SIG_FN_DIR := 'data/plotting/sig-elecs'
 SIG_FN_DIR := 'data/plotting/sig-elecs/20230510-tfs-sig-file'
 SIG_FN_DIR := 'data/plotting/sig-elecs/20230413-whisper-paper'
+SIG_FN_DIR := 'data/plotting/sig-elecs/20230723-tfs-sig-file'
 
 # Significant electrode files
-SIG_FN := 
 SIG_FN := --sig-elec-file tfs-sig-file-%s-whisper-en-last-0.01-comp.csv tfs-sig-file-%s-whisper-de-best-0.01-prod.csv
 SIG_FN := --sig-elec-file podcast_160.csv
-SIG_FN := --sig-elec-file tfs-sig-file-glove-%s-comp.csv tfs-sig-file-glove-%s-prod.csv
 SIG_FN := --sig-elec-file tfs-sig-file-%s-whisper-ende-outer-comp.csv tfs-sig-file-%s-whisper-ende-outer-prod.csv
+SIG_FN := 
+SIG_FN := --sig-elec-file tfs-sig-file-glove-%s-comp.csv tfs-sig-file-glove-%s-prod.csv
 
 
 plot-encoding:
 	rm -f results/figures/*
 	python scripts/tfsplt_encoding.py \
-		--sid 625 676 7170 798 \
+		--sid 676 \
 		--formats \
-			'data/encoding/tfs//*/*_%s.csv' \
-		--labels  \
+			'data/encoding/tfs/20230811-transcription-test/kw-tfs-full-676-gpt2-xl--lag5k-25-all/*/*_%s.csv' \
+			'data/encoding/tfs/20230811-transcription-test/kw-tfs-full-676-gpt2-xl-large-v2-x--lag5k-25-all/*/*_%s.csv' \
+		--labels gpt2 gpt2-whisperx \
 		--keys comp prod \
 		--sig-elec-file-dir $(SIG_FN_DIR)\
 		$(SIG_FN) \
@@ -183,7 +189,7 @@ plot-encoding:
 		$(LAG_TK_LABLS) \
 		$(PLT_PARAMS) \
 		--y-vals-limit $(Y_LIMIT) \
-		--outfile results/figures/tfs-encoding.pdf
+		--outfile results/figures/tfs-676-whisperx-gpt2.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
 
 
