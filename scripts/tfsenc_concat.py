@@ -19,9 +19,7 @@ files1 = glob.glob(args.formats[0] + "/*.csv")
 formats = args.formats[1:]
 for format in formats:
     files2 = glob.glob(format + "/*.csv")
-    assert len(files1) == len(
-        files2
-    ), "Need same number files under data sources"
+    assert len(files1) == len(files2), "Need same number files under data sources"
 
 for file in files1:
     if "summary" in file:
@@ -30,6 +28,7 @@ for file in files1:
     newfilename = args.output_dir + filename
 
     df = pd.read_csv(file, header=None)
+
     for format in formats:
         file2 = format + filename
         df2 = pd.read_csv(file2, header=None)

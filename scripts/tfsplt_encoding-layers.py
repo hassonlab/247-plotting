@@ -50,6 +50,7 @@ def arg_parser():
     parser.add_argument("--lag-ticks", nargs="+", type=float, default=[])
     parser.add_argument("--lag-tick-labels", nargs="+", type=int, default=[])
     parser.add_argument("--y-vals-limit", nargs="+", type=float, default=[0, 0.3])
+    parser.add_argument("--x-label", nargs="?", type=str, default="Layers")
     parser.add_argument("--outfile", default="results/figures/tfs-encoding.pdf")
     args = parser.parse_args()
 
@@ -161,8 +162,8 @@ def aggregate_data(args, parallel=False):
                     args.sigelecs,
                     (load_sid, key),
                     load_sid,
-                    f"{layer:02}",
                     key,
+                    f"{layer:02}",
                     "all",
                     parallel,
                 )
@@ -183,7 +184,7 @@ def organize_data(args, df):
     Returns:
         df (DataFrame): df with correct columns (lags)
     """
-    df.set_index(["label", "electrode", "key", "sid", "type"], inplace=True)
+    df.set_index(["label2", "label1", "electrode", "key", "sid"], inplace=True)
     assert len(args.lags_plot) == len(
         df.columns
     ), f"args.lags_plot length ({len(args.lags_plot)}) must be the same size as results ({len(df.columns)})"
@@ -217,7 +218,7 @@ def plot_average_encoding(args, df, pdf):
     print(f"Plotting Average Encoding split by key")
     fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
     for ax, (plot, subdf) in zip(axes, df.groupby("key", axis=0)):
-        for line, subsubdf in subdf.groupby("label", axis=0):
+        for line, subsubdf in subdf.groupby("label1", axis=0):
             vals = subsubdf.mean(axis=0)
             err = subsubdf.sem(axis=0)
             map_key = (line, plot)
@@ -251,7 +252,7 @@ def plot_average_encoding(args, df, pdf):
         fraction=0.03,
         pad=0.02,
         ticks=ticks,
-        label="Layers",
+        label=args.x_label,
     )
 
     pdf.savefig(fig)
@@ -276,7 +277,7 @@ def plot_average_encoding_heatmap(args, df, pdf):
     df.columns = args.x_vals_show
     fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
     for ax, (plot, subdf) in zip(axes, df.groupby("key", axis=0)):
-        heatmapdf = subdf.groupby("label").mean()
+        heatmapdf = subdf.groupby("label1").mean()
         sns.heatmap(heatmapdf, cmap=args.colors, linewidths=0, rasterized=True, ax=ax)
         ax.invert_yaxis()
         ax.set_xticks(xticks)
@@ -284,7 +285,7 @@ def plot_average_encoding_heatmap(args, df, pdf):
         ax.tick_params(axis="x", rotation=0)
         ax.tick_params(axis="y", rotation=0)
         ax.set_xlabel("Lag (s)")
-        ax.set_ylabel("Layers")
+        ax.set_ylabel(args.x_label)
         ax.set_title(f"{plot} average")
 
     pdf.savefig(fig)
@@ -307,7 +308,7 @@ def plot_average_max(args, df, pdf):
     colors = get_con_color(args.colors, len(args.unique_labels))
     fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
     for ax, (plot, subdf) in zip(axes, df.groupby("key", axis=0)):
-        scatterdf = subdf.groupby("label").mean().max(axis=1)
+        scatterdf = subdf.groupby("label1").mean().max(axis=1)
         ax.scatter(
             args.labels,
             scatterdf,
@@ -318,7 +319,7 @@ def plot_average_max(args, df, pdf):
             # edgecolors="grey",
         )
         ax.set(
-            xlabel="Layers",
+            xlabel=args.x_label,
             ylabel="Max Correlation (r)",
             title=f"{plot} average max",
         )
@@ -396,7 +397,7 @@ def plot_maxidx(args, df, pdf):
             )
             ax.set(
                 xlabel="Lags (s)",
-                ylabel="Layers",
+                ylabel=args.x_label,
                 title=f"{plot} max_idx",
             )
             ax.set_xlim(args.lags_show[0], args.lags_show[-1])
@@ -412,7 +413,7 @@ def plot_maxidx(args, df, pdf):
         fraction=0.03,
         pad=0.02,
         ticks=ticks,
-        label="Layers",
+        label=args.x_label,
     )
 
     pdf.savefig(fig)
