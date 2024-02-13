@@ -308,6 +308,10 @@ def plot_average_max(args, df, pdf):
     colors = get_con_color(args.colors, len(args.unique_labels))
     fig, axes = plt.subplots(1, len(args.unique_keys), figsize=args.fig_size)
     for ax, (plot, subdf) in zip(axes, df.groupby("key", axis=0)):
+    # if True: # for podcast
+    #     ax = axes
+    #     plot = "comp"
+        # scatterdf = df.groupby("label1").mean().max(axis=1)
         scatterdf = subdf.groupby("label1").mean().max(axis=1)
         ax.scatter(
             args.labels,
@@ -429,6 +433,12 @@ def main():
     # Aggregate data
     df = aggregate_data(args)
     df = organize_data(args, df)
+
+    # rois = pd.read_csv("data/plotting/paper-whisper/data/base_df.csv")
+    # rois["elecs"] = rois.sid.astype(str) + "_" + rois.elec_1
+    # # rois = rois[(rois.roi_1 == "preCG") | (rois.roi_1 == "postCG")]
+    # rois = rois[rois.roi_1 == "STG"]
+    # df2 = df[df.index.isin(rois.elecs, level=2)]
 
     # Plotting
     pdf = PdfPages(args.outfile)

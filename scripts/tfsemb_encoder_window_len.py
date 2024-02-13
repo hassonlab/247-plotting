@@ -45,7 +45,14 @@ def main():
         df = pd.concat((df, df_sid))
 
     df["word_len"] = (df.offset - df.onset) * 1000 / 512
-    df_short = df[(df["word_len"] >= 0) & (df["word_len"] <= 1000)].copy()
+    df_short = df[(df["word_len"] > 0) & (df["word_len"] <= 1000)].copy()
+    df["word_str_len"] = df.word.str.len()
+    fig, axes = plt.subplots(figsize=(20, 10))
+    axes.hist(df["word_str_len"], bins="auto")
+    plt.yscale("log")
+    plt.savefig("word_len_freq-log.png")
+    breakpoint()
+
     # 132 negative, 11 bigger than 2s, 171 bigger than 1s
 
     # df.word_len.describe()

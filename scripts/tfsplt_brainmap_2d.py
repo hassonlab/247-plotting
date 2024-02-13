@@ -1,5 +1,6 @@
 import argparse
 import os
+import glob
 
 import numpy as np
 import pandas as pd
@@ -7,12 +8,16 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 from tfsplt_brainmap import (
+    get_sigelecs,
     Colorbar,
     read_coor,
     load_surf,
     plot_surf,
     update_properties,
+    make_brainmap,
 )
+from tfsplt_encoding import organize_data
+from tfsplt_utils import Colormap2D
 
 # -----------------------------------------------------------------------------
 # Argument Parser and Setup
@@ -29,11 +34,16 @@ def arg_parser():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--sid", type=str, nargs="+", required=True)
+    parser.add_argument("--formats", nargs="+", required=True)
     parser.add_argument("--keys", nargs="+", required=True)
+    parser.add_argument("--effect", nargs="?", type=str, required=True)
+    parser.add_argument("--cmap", nargs="?", type=str, required=True)
     parser.add_argument("--sig-elec-file", nargs="+", default=[])
     parser.add_argument(
         "--sig-elec-file-dir", nargs="?", default="data/plotting/sig-elecs/"
     )
+    parser.add_argument("--lags-plot", nargs="+", type=float, required=True)
+    parser.add_argument("--lags-show", nargs="+", type=float, required=True)
     parser.add_argument("--final", action="store_true", default=False)
     parser.add_argument("--final2", action="store_true", default=False)
     parser.add_argument("--shiny", action="store_true", default=False)
@@ -59,12 +69,14 @@ def set_up_environ(args):
     # Additional args
     if "777" in args.sid:
         args.project = "podcast"
-        assert len(args.sig_elec_file) == 1
+        assert len(args.sig_elec_file) <= 1
     else:
         args.project = "tfs"
     args.main_dir = "data/plotting/brainplot/"
     args.brain_type = "ave"  # ave or ind
-    args.hemisphere = "left"  # left or right or both
+    args.hemisphere = "both"  # left or right or both
+
+    args = get_sigelecs(args)  # get significant electrodes
 
     return args
 
@@ -74,39 +86,139 @@ def set_up_environ(args):
 # -----------------------------------------------------------------------------
 
 
-def get_sigelec_df(args):
-    """Loading significant electrode list to dataframe for plotting
+def aggregate_data(args):
+    """Aggregate encoding data
 
     Args:
         args (namespace): commandline arguments
 
     Returns:
-        df (DataFrame): DataFrame with "subject" and "electrode" columns
+        df (DataFrame): df with all encoding results
     """
-    if args.project == "podcast":  # podcast
-        df = pd.read_csv(args.sig_elec_file[0])
-        df["key"] = "comp"
-    elif len(args.sig_elec_file) == 1:
-        args.sig_elec_file = args.sig_elec_file[0]
-        df = pd.DataFrame()
-        for sid in args.sid:
+    print("Aggregating data")
+
+    def read_file(fname):
+        files = glob.glob(fname)
+        assert (
+            len(files) > 0
+        ), f"No results found under {fname}"  # check files exist under format
+
+        for resultfn in files:
+            elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # elec = os.path.basename(resultfn).replace(".csv", "")[:-10]
+            # Skip electrodes if they're not part of the sig list
+            if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
+                continue
+            df = pd.read_csv(resultfn, header=None)
+            # df = df.iloc[[11], :]
+            df.insert(0, "sid", load_sid)
+            df.insert(0, "key", key)
+            df.insert(0, "electrode", elec)
+            df.insert(0, "label", label)
+            data.append(df)
+
+    data = []
+
+    for load_sid in args.sid:
+        for fmt, label in zip(args.formats, ["enca", "encb", "encab"]):
             for key in args.keys:
-                try:
-                    filename = args.sig_elec_file % (sid, key)
-                except:
-                    dct = {"sid": sid, "key": key}
-                    filename = args.sig_elec_file % dct
-                sid_key_df = pd.read_csv(filename)
-                sid_key_df["key"] = key
-                df = pd.concat((df, sid_key_df))
-    elif len(args.sig_elec_file) == 2:  # separate comp/prod
-        df = pd.DataFrame()
-        for sid in args.sid:
-            for fname, key in zip(args.sig_elec_file, args.keys):
-                filename = fname % sid
-                sid_key_df = pd.read_csv(filename)
-                sid_key_df["key"] = key
-                df = pd.concat((df, sid_key_df))
+                fname = fmt % (load_sid, key)
+                read_file(fname)
+
+    if not len(data):
+        print("No data found")
+        exit(1)
+    df = pd.concat(data)
+    return df
+
+
+def add_effect(args, df):
+    """Adding effect column to dataframe
+
+    Args:
+        args (namespace): commandline arguments
+        df (DataFrame): df with all encoding results
+
+    Returns:
+        df (DataFrame): df with all encoding results and effect
+        color_split (list): list of ints and Colorbar
+    """
+
+    def get_part_df(label):  # get partial df
+        idx = pd.IndexSlice
+        part_df = df.loc[idx[label, :, :, :], :].copy()
+        part_df.index = part_df.index.droplevel("label")
+        part_df_idx = part_df.index.get_level_values("electrode").tolist()
+        return part_df, part_df_idx
+
+    def rgb_to_hex(color):
+        return "#{:02x}{:02x}{:02x}".format(color[0], color[1], color[2])
+
+    if len(args.formats) == 3:
+        df["max"] = df.max(axis=1)
+        df1, df1_idx = get_part_df("enca")
+        df2, df2_idx = get_part_df("encb")
+        df3, df3_idx = get_part_df("encab")
+        assert len(df1_idx) == len(df2_idx) == len(df3_idx)
+        assert all([a == b for a, b in zip(df1_idx, df2_idx)])
+        assert all([a == b for a, b in zip(df1_idx, df3_idx)])
+
+        df1.loc[:, "shared_var"] = df1["max"] ** 2 + df2["max"] ** 2 - df3["max"] ** 2
+        df1.loc[df1.shared_var < 0, "shared_var"] = 0
+        df1.loc[:, "shared"] = np.sqrt(df1.shared_var)
+        df1.loc[:, "ua_var"] = df1["max"] ** 2 - df1["shared"] ** 2
+        df1.loc[df1.ua_var < 0, "ua_var"] = 0
+        df1.loc[:, "ua"] = np.sqrt(df1.ua_var)
+        df1.loc[:, "ub_var"] = df2["max"] ** 2 - df1["shared"] ** 2
+        df1.loc[df1.ub_var < 0, "ub_var"] = 0
+        df1.loc[:, "ub"] = np.sqrt(df1.ub_var)
+        df1.loc[:, "effect1"] = df1.ua**2 / df3["max"] ** 2
+        df1.loc[:, "effect2"] = df1.ub**2 / df3["max"] ** 2
+        # df1.loc[:, "effect1"] = df1.ua
+        # df1.loc[:, "effect2"] = df1.ub
+        # df1.loc[:, "effect1"] = df1["max"] / df3["max"]
+        # df1.loc[:, "effect2"] = df2["max"] / df3["max"]
+        df = df1
+
+        if args.effect == "varpar":
+            cc = Colormap2D(
+                args.cmap,
+                vmin=0,
+                vmax=1,
+                vmin2=0,
+                vmax2=1,
+                vflip=True,
+                hflip=True,
+            )
+            red, green, blue, alpha = cc(df.loc[:, ("effect1", "effect2")].to_numpy())
+            colors = np.vstack((red, green, blue, alpha)).T
+            colors_hex = [rgb_to_hex(color) for color in colors]
+            df["effect"] = colors_hex
+            df.reset_index(inplace=True)
+        elif args.effect == "shared":
+            df["effect"] = df1.shared / df3["max"]
+            df.reset_index(inplace=True)
+            args.color_split = [Colorbar(bar_min=0, bar_max=1)]
+
+    elif len(args.formats) == 2:
+        df["max"] = df.max(axis=1)
+        df1, df1_idx = get_part_df("enca")
+        df2, df2_idx = get_part_df("encb")
+        assert len(df1_idx) == len(df2_idx)
+        assert all([a == b for a, b in zip(df1_idx, df2_idx)])
+        df1.loc[:, "max2"] = df2["max"]
+        df = df1
+        # df["max3"] = df.loc[:, ("max", "max2")].max(axis=1) # ratio
+        # df["max"] = df["max"] / df["max3"]
+        # df["max2"] = df["max2"] / df["max3"]
+        # cc = Colormap2D(args.cmap, vmin=0, vmax=1, vmin2=0, vmax2=1)
+        cc = Colormap2D(args.cmap, vmin=0, vmax=0.3, vmin2=0, vmax2=0.3)
+        red, green, blue, alpha = cc(df.loc[:, ("max2", "max")].to_numpy())
+        colors = np.vstack((red, green, blue, alpha)).T
+        colors_hex = [rgb_to_hex(color) for color in colors]
+        df["effect"] = colors_hex
+        df.reset_index(inplace=True)
+
     return df
 
 
@@ -115,7 +227,7 @@ def get_sigelec_df(args):
 # -----------------------------------------------------------------------------
 
 
-def plot_electrodes(fig, df, color, args):
+def plot_electrodes(fig, df, args):
     """Plot electrodes onto figure
 
     Args:
@@ -153,10 +265,10 @@ def plot_electrodes(fig, df, color, args):
                 x=x,
                 y=y,
                 z=z,
-                surfacecolor=np.full(shape=z.shape, fill_value=color),
-                name=str(effect),
-                legendgroup=str(effect),
-                colorscale=[[0, color], [1, color]],
+                surfacecolor=np.full(shape=z.shape, fill_value=effect),
+                name="Elec",
+                legendgroup="Elec",
+                colorscale=[[0, effect], [1, effect]],
                 showlegend=legend_show,
                 showscale=False,
             )
@@ -187,8 +299,7 @@ def plot_brainmap_cat(args, df, outfile):
         fig = plot_surf(fig, surf2, args)
 
     # Plot Electrodes and Colorbars
-    for (_, df_colorscale), color in zip(df.groupby(df.effect), args.colors):
-        fig = plot_electrodes(fig, df_colorscale, color, args)
+    fig = plot_electrodes(fig, df, args)
 
     # Save Plot
     fig = update_properties(fig, args)
@@ -198,7 +309,7 @@ def plot_brainmap_cat(args, df, outfile):
         width = 1000
     try:
         print(f"Writing to {outfile}")
-        fig.write_image(outfile, scale=6, width=width, height=1000)
+        fig.write_image(outfile, scale=36, width=width, height=1000)
     except:
         print("Not writing to file")
     return fig
@@ -260,23 +371,28 @@ def main():
     args = set_up_environ(args)
 
     # Get effect
-    df = get_sigelec_df(args)
-
-    df["effect"] = df.subject.astype(int)
-    df.loc[df.effect == 7170, "effect"] = 717  # fix for 717
-    color_list = px.colors.qualitative.D3  # 10 colors
-    args.colors = color_list
+    df = aggregate_data(args)
+    df = organize_data(args, df)
+    df = add_effect(args, df)
 
     for key in args.keys:
         try:
             outfile = args.outfile % key
         except:
             outfile = args.outfile
-        make_brainmap_cat(
-            args,
-            df.loc[df.key == key, ("subject", "electrode", "effect")],
-            outfile,
-        )
+
+        if args.effect == "shared":
+            make_brainmap(
+                args,
+                df.loc[df.key == key, ("electrode", "effect")],
+                outfile,
+            )
+        else:
+            make_brainmap_cat(
+                args,
+                df.loc[df.key == key, ("electrode", "effect")],
+                outfile,
+            )
     return
 
 

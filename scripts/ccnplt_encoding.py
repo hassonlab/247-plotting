@@ -19,9 +19,9 @@ def main():
 
     format = {}
     for layer in layers:
-        format[
-            f"whisper-en-{layer:02d}"
-        ] = f"/scratch/gpfs/kw1166/247-encoding/results/podcast/kw-podcast-full-777-whisper-medium.en-encoder-new-lag5k-25-all-{layer}/*/*_comp.csv"
+        format[f"whisper-en-{layer:02d}"] = (
+            f"/scratch/gpfs/kw1166/247-encoding/results/podcast/kw-podcast-full-777-whisper-medium.en-encoder-new-lag5k-25-all-{layer}/*/*_comp.csv"
+        )
 
     sig_elecs = {}
     areas = {

@@ -1,22 +1,23 @@
-import pickle
 import os
 import argparse
 import sys
 
+import csv
+import pickle
 import numpy as np
 import pandas as pd
 import nltk
 
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, permutation_test_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.dummy import DummyClassifier
 from sklearn.pipeline import make_pipeline
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 from tfsplt_utils import load_pickle
-
+import statsmodels.api as sm
 
 # nltk.download("punkt")
 # nltk.download("averaged_perceptron_tagger")
@@ -113,10 +114,16 @@ def aggregate_df(args):
     print("Aggregating Data")
 
     subjects = [625, 676, 7170, 798]
+    subjects = [777]
 
-    whisper_en = f"pickles/embeddings/whisper-tiny.en-encoder/full/cnxt_0001/layer_{args.en_layer:02}.pkl"
-    whisper_de = f"pickles/embeddings/whisper-tiny.en-decoder/full/cnxt_0001/layer_{args.de_layer:02}.pkl"
-    base_df_filename = "pickles/embeddings/whisper-tiny.en-decoder/full/base_df.pkl"
+    # whisper_en = f"pickles/embeddings/whisper-tiny.en-encoder/full/cnxt_0001/layer_{args.en_layer:02}.pkl"
+    # whisper_de = f"pickles/embeddings/whisper-tiny.en-decoder/full/cnxt_0001/layer_{args.de_layer:02}.pkl"
+    # base_df_filename = "pickles/embeddings/whisper-tiny.en-decoder/full/base_df.pkl"
+    whisper_en = f"pickles/embeddings/whisper-tiny.en-encoder-replicate/full/cnxt_0001/layer_{args.en_layer:02}.pkl"
+    whisper_de = f"pickles/embeddings/whisper-tiny.en-decoder-replicate/full/cnxt_0001/layer_{args.de_layer:02}.pkl"
+    base_df_filename = (
+        "pickles/embeddings/whisper-tiny.en-decoder-replicate/full/base_df.pkl"
+    )
 
     # load in data
     whisper_df = pd.DataFrame()
@@ -151,6 +158,32 @@ def aggregate_df(args):
     whisper_df = ave_emb(whisper_df)
 
     return whisper_df
+
+
+def aggregate_df_daria(args):
+    print("Aggregating Data")
+
+    whisper_en = "data/pickling/podcast/999/speech_embeddings.pickle"
+    whisper_de = "data/pickling/podcast/999/lang_embeddings.pickle"
+    whisper_base = "data/pickling/podcast/999/word_onset_offset_df.pickle"
+
+    with open(whisper_base, "rb") as fh:
+        datum = pickle.load(fh)
+    with open(whisper_en, "rb") as fh:
+        whisper_en = pickle.load(fh)
+    with open(whisper_de, "rb") as fh:
+        whisper_de = pickle.load(fh)
+    datum = pd.DataFrame(datum)
+    whisper_en = [en[4][0].tolist() for en in whisper_en]
+    whisper_de = [de[3][0].tolist() for de in whisper_de]
+    datum["en_emb"] = whisper_en
+    datum["de_emb"] = whisper_de
+    datum["adjusted_onset"] = datum.audio_onset
+    datum["adjusted_offset"] = datum.audio_offset
+    datum["onset"] = datum.audio_onset
+    datum["offset"] = datum.audio_offset
+
+    return datum
 
 
 def add_speech(whisper_df):
@@ -290,12 +323,78 @@ def tsne(whisper_df, col):
     return projections
 
 
+def logistic_sig(df, x, y, shuffle_num=5):
+    print(f"Logistic from {x} to {y}")
+    print(f"original # {len(df[y].unique())}")
+    g = df.groupby(df[y])
+    df = g.filter(lambda x: len(x) >= 100)
+    df.reset_index(drop=True, inplace=True)
+    print(f"new # {len(df[y].unique())}")
+
+    kfolds = 10
+    skf = KFold(n_splits=kfolds, shuffle=False)
+    folds = [t[1] for t in skf.split(np.arange(len(df)))]
+
+    model = make_pipeline(
+        StandardScaler(),
+        # PCA(50, whiten=True),
+        LogisticRegression(max_iter=1000),
+    )
+
+    # PCA early for x, shuffle for y
+    df = run_pca(50, df, x)
+
+    scores = []
+    for rep in np.arange(0, shuffle_num):
+        print(f"Rep {rep}")
+        df[y] = np.random.permutation(df[y].values)  # shuffle y
+        for i in range(kfolds):
+            # print(f"\t Fold {i}")
+            folds_ixs = np.roll(range(kfolds), i)
+            test_fold = folds_ixs[-1]
+            train_folds = folds_ixs[:-1]
+            test_index = folds[test_fold]
+            train_index = np.concatenate([folds[j] for j in train_folds])
+
+            X_train = df.loc[train_index, x]
+            X_test = df.loc[test_index, x]
+            Y_train = df.loc[train_index, y]
+            Y_test = df.loc[test_index, y]
+
+            X_train = np.array(X_train.tolist())
+            X_test = np.array(X_test.tolist())
+            Y_train = np.array(Y_train.tolist())
+            Y_test = np.array(Y_test.tolist())
+
+            model.fit(X_train, Y_train)
+            preds = model.predict(X_test)
+            df.loc[test_index, "pred"] = preds
+        score = balanced_accuracy_score(df[y], df.pred)
+        # score = accuracy_score(df[y], df.pred)
+        scores.append(score)
+
+    # Sig test code that didn't work
+    # pca = PCA(n_components=50, svd_solver="auto", whiten=True)
+    # pca_output = pca.fit_transform(X_train)
+    # estimator = LogisticRegression()
+    # score, permutation_scores, pvalue = permutation_test_score(
+    #     model, X_train, Y_train, cv=10, random_state=0
+    # )
+    # More code that didn't work
+    # sm_model = sm.Logit(Y_train, sm.add_constant(X_train)).fit(disp=0)
+    # logit_model = sm.Logit(Y_train.tolist(), X_train.tolist(), missing="drop")
+    # result = logit_model.fit()
+    # print(result.summary())
+
+    return scores
+
+
 def logistic(df, x, y):
     print(f"Logistic from {x} to {y}")
 
     print(f"original # {len(df[y].unique())}")
     g = df.groupby(df[y])
-    df = g.filter(lambda x: len(x) >= 100)
+    df = g.filter(lambda x: len(x) >= 5)
     df.reset_index(drop=True, inplace=True)
     print(f"new # {len(df[y].unique())}")
 
@@ -382,10 +481,9 @@ def classify(df, args):
     ]
 
     for dim in args.pca_dims:  # loop over dim
-        results_df = pd.DataFrame(columns={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+        ###### Classification ######
+        results_df = pd.DataFrame(columns=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
         print(dim)
-        # df = run_pca(dim, df, "en_emb")
-        # df = run_pca(dim, df, "de_emb")
         for plot in plot_dict.keys():
             for emb in embs:
                 scores = logistic(df, emb, plot)
@@ -397,6 +495,14 @@ def classify(df, args):
                 f"classifier_pca{dim}_filter-100_{args.aggr_type}_L{args.layer}.csv",
             )
         )
+        ###### Sig Test ######
+        # rep = 1000
+        # scores = logistic_sig(df, args.xcol, args.ycol, rep)
+        # filename = os.path.join(args.savedir, f"b{args.xcol}_{args.ycol}_{rep}.csv")
+        # with open(filename, "w") as csvfile:
+        #     print("writing file")
+        #     csvwriter = csv.writer(csvfile)
+        #     csvwriter.writerow(scores)
 
 
 def arg_parser():
@@ -404,11 +510,14 @@ def arg_parser():
     parser.add_argument("--layer", nargs="?", type=str, default="")
     parser.add_argument("--aggregate", action="store_true", default=False)
     parser.add_argument("--tsne", action="store_true", default=False)
+    parser.add_argument("--pca", action="store_true", default=False)
     parser.add_argument("--classify", action="store_true", default=False)
     parser.add_argument("--aggr-type", nargs="?", type=str, default="ave")
     parser.add_argument(
         "--savedir", nargs="?", type=str, default="results/paper-whisper"
     )
+    parser.add_argument("--xcol", nargs="?", type=str, default="")
+    parser.add_argument("--ycol", nargs="?", type=str, default="")
     args = parser.parse_args()
 
     args.en_layer = int(args.layer)
@@ -419,11 +528,21 @@ def arg_parser():
         args.en_layer = 4
         args.de_layer = 3
 
-    args.loaddir = "data/pickling/tfs/"
-    aggr_file = f"all4-whisper-embs-{args.aggr_type}{args.layer}.pkl"
+    # args.loaddir = "data/pickling/tfs/"
+    # aggr_file = f"all4-whisper-embs-{args.aggr_type}{args.layer}.pkl"
+    # args.aggr_file = os.path.join(args.savedir, aggr_file)
+    # tsne_file = f"all4-whisper-tsne-{args.aggr_type}{args.layer}.pkl"
+    # args.tsne_file = os.path.join(args.savedir, tsne_file)
+    # pca_file = f"all4-whisper-pca-{args.aggr_type}{args.layer}.pkl"
+    # args.pca_file = os.path.join(args.savedir, pca_file)
+
+    args.loaddir = "data/pickling/podcast/"
+    aggr_file = f"pod-whisper-embs-{args.aggr_type}{args.layer}.pkl"
     args.aggr_file = os.path.join(args.savedir, aggr_file)
-    tsne_file = f"all4-whisper-tsne-pca-{args.aggr_type}{args.layer}.pkl"
+    tsne_file = f"pod-whisper-tsne-{args.aggr_type}{args.layer}.pkl"
     args.tsne_file = os.path.join(args.savedir, tsne_file)
+    pca_file = f"pod-whisper-pca-{args.aggr_type}{args.layer}.pkl"
+    args.pca_file = os.path.join(args.savedir, pca_file)
 
     args.pca_dims = [50]
 
@@ -442,11 +561,10 @@ def main():
     )
     print(f"t-SNE: {args.tsne}\n")
     print(f"Classifier: {args.classify}\n")
-    breakpoint()
 
     # Aggregate or load file
     if args.aggregate:
-        df = aggregate_df(args)
+        df = aggregate_df_daria(args)
         df = process_df(df, args)
         save_pickle(df, args.aggr_file)
     else:
@@ -464,6 +582,22 @@ def main():
             de_y=tsne_de[1],
         )
         save_pickle(df, args.tsne_file)
+
+    if args.pca:
+        pca = PCA(n_components=2, svd_solver="auto", whiten=True)
+        embs = np.vstack(df["en_emb"].values)
+        pca_output = pca.fit_transform(embs)
+        df["en_x"] = pca_output[:, 0]
+        df["en_y"] = pca_output[:, 1]
+
+        pca = PCA(n_components=2, svd_solver="auto", whiten=True)
+        embs = np.vstack(df["de_emb"].values)
+        pca_output = pca.fit_transform(embs)
+        df["de_x"] = pca_output[:, 0]
+        df["de_y"] = pca_output[:, 1]
+        save_pickle(df, args.pca_file)
+        breakpoint()
+        # df[col] = pca_output.tolist()
 
     # Classifer
     if args.classify:

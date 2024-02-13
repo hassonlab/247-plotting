@@ -573,6 +573,75 @@ def main():
     df = aggregate_data(args)
     df = organize_data(args, df)
 
+    # df1 = df.query("label == 'original' and key=='comp'")
+    # idx = df1.index.levels[0].to_series().replace({"original": "comp-comp"})
+    # df1.index = df1.index.set_levels(idx, level=0)
+    # df2 = df.query("label == 'original' and key=='prod'")
+    # idx = df2.index.levels[0].to_series().replace({"original": "prod-prod"})
+    # df2.index = df2.index.set_levels(idx, level=0)
+    # df3 = df.query("label == 'trained-on-key' and key=='comp'")
+    # idx = df3.index.levels[0].to_series().replace({"trained-on-key": "comp-prod"})
+    # df3.index = df3.index.set_levels(idx, level=0)
+    # idx = df3.index.levels[2].to_series().replace({"comp": "prod", "prod": "prod1"})
+    # df3.index = df3.index.set_levels(idx, level=2)
+    # df4 = df.query("label == 'trained-on-key' and key=='prod'")
+    # idx = df4.index.levels[0].to_series().replace({"trained-on-key": "prod-comp"})
+    # df4.index = df4.index.set_levels(idx, level=0)
+    # idx = df4.index.levels[2].to_series().replace({"prod": "comp", "comp": "comp1"})
+    # df4.index = df4.index.set_levels(idx, level=2)
+    # df5 = df.query("label == 'trained-on-key2' and key=='comp'")
+    # idx = df5.index.levels[0].to_series().replace({"trained-on-key2": "comp-prod2"})
+    # df5.index = df5.index.set_levels(idx, level=0)
+    # idx = df5.index.levels[2].to_series().replace({"comp": "prod", "prod": "prod1"})
+    # df5.index = df5.index.set_levels(idx, level=2)
+    # df6 = df.query("label == 'trained-on-key2' and key=='prod'")
+    # idx = df6.index.levels[0].to_series().replace({"trained-on-key2": "prod-comp2"})
+    # df6.index = df6.index.set_levels(idx, level=0)
+    # idx = df6.index.levels[2].to_series().replace({"prod": "comp", "comp": "comp1"})
+    # df6.index = df6.index.set_levels(idx, level=2)
+    # df = pd.concat((df1, df2, df3, df4, df5, df6))
+
+    # args.cmap = {
+    #     ("comp-comp", "comp"): "#1f77b4",
+    #     ("prod-prod", "prod"): "#1f77b4",
+    #     ("prod-comp", "comp"): "#ff7f0e",
+    #     ("comp-prod", "prod"): "#ff7f0e",
+    #     ("prod-comp", "prod"): "#ff7f0e",
+    #     ("comp-prod", "comp"): "#ff7f0e",
+    #     ("prod-comp2", "comp"): "#2ca02c",
+    #     ("comp-prod2", "prod"): "#2ca02c",
+    #     ("prod-comp2", "prod"): "#2ca02c",
+    #     ("comp-prod2", "comp"): "#2ca02c",
+    # }
+    # args.smap = {
+    #     ("comp-comp", "comp"): "-",
+    #     ("prod-prod", "prod"): "--",
+    #     ("prod-comp", "comp"): "-",
+    #     ("comp-prod", "prod"): "--",
+    #     ("prod-comp", "prod"): "-",
+    #     ("comp-prod", "comp"): "--",
+    #     ("prod-comp2", "comp"): "-",
+    #     ("comp-prod2", "prod"): "--",
+    #     ("prod-comp2", "prod"): "-",
+    #     ("comp-prod2", "comp"): "--",
+    # }
+
+    # breakpoint()
+    # pdf = PdfPages(args.outfile)
+    # for roi in ["IFG", "STG", "preCG", "SM"]:
+    #     rois = pd.read_csv("data/plotting/paper-whisper/data/base_df.csv")
+    #     rois["elecs"] = rois.sid.astype(str) + "_" + rois.elec_1
+    #     if roi == "SM":
+    #         rois = rois[(rois.roi_1 == "preCG") | (rois.roi_1 == "postCG")]
+    #     else:
+    #         rois = rois[rois.roi_1 == roi]
+    #     df2 = df[df.index.isin(rois.elecs, level=1)]
+    #     for sid in [625, 676, 7170, 798]:
+    #         df3 = df2[df2.index.isin([sid], level=3)]
+    #         fig = plot_average_split(args, df3, pdf)
+    #         plt.savefig(f"{sid}_{roi}.jpeg")
+    # breakpoint()
+
     # Plotting
     pdf = PdfPages(args.outfile)
     if len(args.y_vals_limit) == 1:  # automatic y limit

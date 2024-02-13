@@ -1,11 +1,13 @@
 import argparse
 import glob
 import os
+import io
 
 import numpy as np
 import pandas as pd
 from scipy.io import loadmat
 import plotly.graph_objects as go
+from PIL import Image
 
 from tfsplt_encoding import organize_data
 
@@ -33,6 +35,9 @@ def arg_parser():
     )
     parser.add_argument("--lags-plot", nargs="+", type=float, required=True)
     parser.add_argument("--lags-show", nargs="+", type=float, required=True)
+    parser.add_argument("--final", action="store_true", default=False)
+    parser.add_argument("--final2", action="store_true", default=False)
+    parser.add_argument("--shiny", action="store_true", default=False)
     parser.add_argument("--outfile", default="results/figures/tfs-encoding.pdf")
     args = parser.parse_args()
 
@@ -107,10 +112,8 @@ def set_up_environ(args):
     args.lags_show = [lag / 1000 for lag in args.lags_show]
     args.lags_plot = [lag / 1000 for lag in args.lags_plot]
     args.sig_elec_file = [
-        os.path.join(args.sig_elec_file_dir, file)
-        for file in args.sig_elec_file
+        os.path.join(args.sig_elec_file_dir, file) for file in args.sig_elec_file
     ]
-    args = get_sigelecs(args)  # get significant electrodes
 
     # Additional args
     if "777" in args.sid:
@@ -121,12 +124,15 @@ def set_up_environ(args):
     args.main_dir = "data/plotting/brainplot/"
     args.brain_type = "ave"  # ave or ind
     args.hemisphere = "left"  # left or right or both
+    if args.final or args.final2:
+        args.hemisphere = "both"
 
     if "-diff" in args.effect:
         assert len(args.formats) == 2, "Provide 2 formats"
     else:
         assert len(args.formats) == 1, "Provide 1 format"
 
+    args = get_sigelecs(args)  # get significant electrodes
     return args
 
 
@@ -154,13 +160,13 @@ def aggregate_data(args):
 
         for resultfn in files:
             elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # elec = os.path.basename(resultfn).replace(".csv", "")[:-10] # for fold
             # Skip electrodes if they're not part of the sig list
-            if (
-                len(args.sigelecs)
-                and elec not in args.sigelecs[(load_sid, key)]
-            ):
+            if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
                 continue
             df = pd.read_csv(resultfn, header=None)
+            # df = df.T.iloc[[10], 1:]  # for Leo's results
+            # df = df.iloc[[11], :] # for fold
             df.insert(0, "sid", load_sid)
             df.insert(0, "key", key)
             df.insert(0, "electrode", elec)
@@ -203,7 +209,7 @@ def add_effect(args, df):
 
     if args.effect == "max":
         df["effect"] = df.max(axis=1)
-        color_split = [Colorbar()]
+        color_split = [Colorbar(bar_min=0.04, bar_max=0.4)]
     elif args.effect == "mean":
         df["effect"] = df.mean(axis=1)
         color_split = [Colorbar()]
@@ -219,11 +225,15 @@ def add_effect(args, df):
             Colorbar(
                 title="Δ corr neg",
                 colorscale=[[0, "rgb(0,0,255)"], [1, "rgb(240,248,255)"]],
+                bar_min=-0.15,
+                bar_max=0,
             ),
             0,
             Colorbar(
                 title="Δ corr pos",
                 colorscale=[[0, "rgb(255,248,240)"], [1, "rgb(255,0,0)"]],
+                bar_min=0,
+                bar_max=0.15,
             ),
         ]
     elif args.effect == "area-diff":
@@ -309,7 +319,7 @@ def load_surf(args):
     return surf1, surf2
 
 
-def plot_surf(fig, surf):
+def plot_surf(fig, surf, args):
     """Plot brain surface onto figure
 
     Args:
@@ -324,7 +334,6 @@ def plot_surf(fig, surf):
     print("Plot Hemisphere")
     # Subtract 1 from every index to convert MATLAB indexing to Python indexing
     surf["faces"] = np.array([conn_idx - 1 for conn_idx in surf["faces"]])
-
     # Plot 3D surface plot of brain, colored according to depth
     fig.add_trace(
         go.Mesh3d(
@@ -338,11 +347,24 @@ def plot_surf(fig, surf):
         )
     )
 
-    fig.update_traces(lighting_ambient=0.3)
+    if args.final:
+        ambient = 0.22
+        specular = 0.4
+    elif args.final2:
+        ambient = 0.3
+        specular = 0.3
+    else:
+        ambient = 0.4
+        specular = 0.4
+
+    fig.update_traces(
+        lighting_ambient=ambient,
+        lighting_specular=specular,
+    )
     return fig
 
 
-def plot_electrodes(fig, df, cbar, brain_type):
+def plot_electrodes(fig, df, cbar, args):
     """Plot electrodes onto figure
 
     Args:
@@ -353,14 +375,18 @@ def plot_electrodes(fig, df, cbar, brain_type):
     Returns:
         fig (plotly graph object): brain map plot with electrodes added
     """
-    print(f"Plotting {len(df)} Electrodes with {brain_type} coordinates")
-    if brain_type == "ave":
+    print(f"Plotting {len(df)} Electrodes with {args.brain_type} coordinates")
+    if args.brain_type == "ave":
         coor_type = "MNI"
-    elif brain_type == "ind":
+    elif args.brain_type == "ind":
         coor_type = "T1"
         assert len(df.subject.unique()) == 1  # only 1 subject
     r = 1.5
     colorbar_show = True
+    if args.final or args.final2:
+        colorbar_show = False
+    if args.final2:
+        r = 1.8
     for elecname, center_x, center_y, center_z, effect in zip(
         df.electrode,
         df[f"{coor_type}_X"],
@@ -385,6 +411,8 @@ def plot_electrodes(fig, df, cbar, brain_type):
             )
         )
         colorbar_show = False
+    if args.shiny:  # add light to elecs
+        fig.update_traces(lighting_specular=0.4)
 
     return fig
 
@@ -451,7 +479,7 @@ def filter_df(df_plot, cbar, color_split):
     return df_colorscale
 
 
-def update_properties(fig):
+def update_properties(fig, args):
     """Adjust camera angle and lighting for fig
 
     Args:
@@ -460,26 +488,58 @@ def update_properties(fig):
     Returns:
         fig (plotly graph object): brain map plot with correct angle and lighting
     """
-    camera = dict(
-        up=dict(x=0, y=0, z=1),
-        center=dict(x=0, y=0, z=0),
-        eye=dict(x=-1.5, y=0, z=0),
-    )
+    # camera = dict(  # Old view
+    #     up=dict(x=0, y=0, z=1),
+    #     center=dict(x=0, y=0, z=0),
+    #     eye=dict(x=-1.5, y=0, z=0),
+    # )
+    if args.final:
+        camera = dict(  # New2 view
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=-1.5, y=0, z=-0.1),
+        )
+    elif args.final2:
+        camera = dict(  # New view
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=-10, y=-0.15, z=-0.1),
+        )
+    else:
+        camera = dict(  # Zaid's view
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=-1.5, y=0.2, z=0),
+        )
 
-    scene = dict(
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        zaxis=dict(visible=False),
-        aspectmode="auto",
-    )
+    if args.final:
+        scene = dict(
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            zaxis=dict(visible=False),
+            aspectmode="manual",
+            aspectratio=dict(x=0.5, y=0.8, z=0.6),
+        )
+    else:
+        scene = dict(
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            zaxis=dict(visible=False),
+        )
 
-    fig.update_layout(scene_camera=camera, scene=scene)
+    if args.final2:
+        roughness = 0.3
+    else:
+        roughness = 0.4
+
     fig.update_traces(
-        lighting_specular=0.4,
         colorbar_thickness=40,
         colorbar_tickfont_size=30,
-        lighting_roughness=0.4,
+        lighting_roughness=roughness,
         lightposition=dict(x=0, y=0, z=100),
+    )
+    fig.update_layout(
+        scene_camera=camera, scene=scene, margin={"l": 0, "r": 0, "t": 0, "b": 0}
     )
 
     return fig
@@ -502,9 +562,9 @@ def plot_brainmap(args, df, outfile):
     surf1, surf2 = load_surf(args)
     fig = go.Figure()
     if surf1:  # left hemisphere
-        fig = plot_surf(fig, surf1)
+        fig = plot_surf(fig, surf1, args)
     if surf2:  # right hemisphere
-        fig = plot_surf(fig, surf2)
+        fig = plot_surf(fig, surf2, args)
 
     # Plot Electrodes and Colorbars
     bar_count = 0
@@ -515,7 +575,7 @@ def plot_brainmap(args, df, outfile):
             df_colorscale = filter_df(df, cbar, args.color_split)
 
         fignew = go.Figure()
-        fignew = plot_electrodes(fignew, df_colorscale, cbar, args.brain_type)
+        fignew = plot_electrodes(fignew, df_colorscale, cbar, args)
         fignew = scale_colorbar(fignew, df_colorscale, cbar, bar_count)
         bar_count += 1
 
@@ -524,13 +584,18 @@ def plot_brainmap(args, df, outfile):
             fig.add_trace(fignew.data[trace])
 
     # Save Plot
-    fig = update_properties(fig)
+    fig = update_properties(fig, args)
     if len(outfile) > 0:
+        width = 1200 + 100 * bar_count
+        if args.final or args.final2:
+            width = 1000
         try:
             print(f"Writing to {outfile}")
-            fig.write_image(
-                outfile, scale=6, width=1200 + 100 * bar_count, height=1000
-            )
+            # fig_bytes = fig.to_image(format="png", scale=100, width=width, height=1000)
+            # buf = io.BytesIO(fig_bytes)
+            # img = Image.open(buf)
+            # breakpoint()
+            fig.write_image(outfile, scale=10, width=width, height=1000)
         except:
             print("File format not provided/supported")
     else:
@@ -630,7 +695,6 @@ def main():
             df.loc[df.key == key, ("electrode", "effect")],
             args.outfile % key,
         )
-
     return
 
 
