@@ -88,7 +88,8 @@ def process_embeddings(df, sid):
     df = remove_punctuation(df)
 
     # add prediction embeddings (force to glove)
-    mask = df["in_glove50"] & df["gpt2-xl_token_is_root"]
+    # mask = df["in_glove50"] & df["gpt2-xl_token_is_root"]
+    mask = df["in_glove50"]
     df = df[mask]
     df.drop(
         ["embeddings"],
@@ -131,6 +132,7 @@ def filter_datum(df):
     # get word gap
     df["word_gap"] = df.adjusted_onset - df.adjusted_offset.shift()
     df["word_len"] = df.adjusted_offset - df.adjusted_onset
+    df["word_gap_next"] = df.adjusted_onset.shift(-1) - df.adjusted_offset
 
     # get rid of tokens without proper speaker
     speaker_mask = df.speaker.str.contains("Speaker")
@@ -160,6 +162,12 @@ def read_datum(sid):
     base_df = load_datum(
         f"data/pickling/tfs/{sid}/pickles/embeddings/gpt2-xl/full/base_df.pkl"
     )
+    # emb_df = load_datum(
+    #     f"data/pickling/tfs/{sid}/pickles/embeddings/Meta-Llama-3-8B/full/cnxt_8192/layer_32.pkl"
+    # )
+    # base_df = load_datum(
+    #     f"data/pickling/tfs/{sid}/pickles/embeddings/Meta-Llama-3-8B/full/base_df.pkl"
+    # )
 
     base_df.reset_index(drop=False, inplace=True)
     df = pd.concat([base_df, emb_df], axis=1)
@@ -180,6 +188,8 @@ def read_datum(sid):
     df = df[  # only select second word onwards for each utt (for word gap)
         (df.production.shift() == df.production)
         & (df.conversation_id.shift() == df.conversation_id)
+        & (df.production.shift(-1) == df.production)
+        & (df.conversation_id.shift(-1) == df.conversation_id)
     ]
     df["sid"] = sid
     df = df.loc[
@@ -199,6 +209,7 @@ def read_datum(sid):
             "surprise",
             "entropy",
             "word_gap",
+            "word_gap_next",
             "word_len",
         ),
     ]
@@ -235,13 +246,13 @@ def read_datum(sid):
 
     return (
         df,
-        df_top,
-        df_bot,
-        df_mid,
-        # df_top_aligned,
-        # df_bot_aligned,
-        # df_top_numaligned,
-        # df_bot_numaligned,
+        # df_top,
+        # df_bot,
+        # df_mid,
+        df_top_aligned,
+        df_bot_aligned,
+        df_top_numaligned,
+        df_bot_numaligned,
     )
 
 
@@ -284,6 +295,8 @@ def read_datum2(sid):
     df = df[  # only select second word onwards for each utt (for word gap)
         (df.production.shift() == df.production)
         & (df.conversation_id.shift() == df.conversation_id)
+        & (df.production.shift(-1) == df.production)
+        & (df.conversation_id.shift(-1) == df.conversation_id)
     ]
     df["sid"] = sid
     df = df.loc[
@@ -328,30 +341,31 @@ def main():
     df_bot_aligned = pd.DataFrame()
     df_top_numaligned = pd.DataFrame()
     df_bot_numaligned = pd.DataFrame()
-    df_mid = pd.DataFrame()
+    # df_mid = pd.DataFrame()
 
     for sid in [625, 676, 7170, 798]:
-        # df_topa_sid, df_bota_sid, df_topna_sid, df_botna_sid = read_datum(sid)
-        # df_top_aligned = pd.concat((df_top_aligned, df_topa_sid))
-        # df_bot_aligned = pd.concat((df_bot_aligned, df_bota_sid))
-        # df_top_numaligned = pd.concat((df_top_numaligned, df_topna_sid))
-        # df_bot_numaligned = pd.concat((df_bot_numaligned, df_botna_sid))
+        df_sid, df_topa_sid, df_bota_sid, df_topna_sid, df_botna_sid = read_datum(sid)
+        df_top_aligned = pd.concat((df_top_aligned, df_topa_sid))
+        df_bot_aligned = pd.concat((df_bot_aligned, df_bota_sid))
+        df_top_numaligned = pd.concat((df_top_numaligned, df_topna_sid))
+        df_bot_numaligned = pd.concat((df_bot_numaligned, df_botna_sid))
 
-        df_sid, df_top_sid, df_bot_sid, df_mid_sid = read_datum2(sid)
+        # df_sid, df_top_sid, df_bot_sid, df_mid_sid = read_datum2(sid)
         df = pd.concat((df, df_sid))
-        df_top = pd.concat((df_top, df_top_sid))
-        df_bot = pd.concat((df_bot, df_bot_sid))
-        df_mid = pd.concat((df_mid, df_mid_sid))
+        # df_top = pd.concat((df_top, df_top_sid))
+        # df_bot = pd.concat((df_bot, df_bot_sid))
+        # df_mid = pd.concat((df_mid, df_mid_sid))
 
-    pickle_dir = "data/plotting/paper-prob-improb/datums/"
-    df.to_pickle(os.path.join(pickle_dir, "df_pred.pkl"))
-    df_top.to_pickle(os.path.join(pickle_dir, "df_pred_top.pkl"))
-    df_bot.to_pickle(os.path.join(pickle_dir, "df_pred_bot.pkl"))
-    df_mid.to_pickle(os.path.join(pickle_dir, "df_pred_mid.pkl"))
-    # df_top_aligned.to_pickle(os.path.join(pickle_dir, "df_top_a.pkl"))
-    # df_bot_aligned.to_pickle(os.path.join(pickle_dir, "df_bot_a.pkl"))
-    # df_top_numaligned.to_pickle(os.path.join(pickle_dir, "df_top_na.pkl"))
-    # df_bot_numaligned.to_pickle(os.path.join(pickle_dir, "df_bot_na.pkl"))
+    pickle_dir = "data/plotting/paper-prob-improb/datums-gpt2/"
+    df.to_pickle(os.path.join(pickle_dir, "df_all.pkl"))
+    # df_top.to_pickle(os.path.join(pickle_dir, "df_pred_top.pkl"))
+    # df_bot.to_pickle(os.path.join(pickle_dir, "df_pred_bot.pkl"))
+    # df_mid.to_pickle(os.path.join(pickle_dir, "df_pred_mid.pkl"))
+
+    df_top_aligned.to_pickle(os.path.join(pickle_dir, "df_top_a.pkl"))
+    df_bot_aligned.to_pickle(os.path.join(pickle_dir, "df_bot_a.pkl"))
+    df_top_numaligned.to_pickle(os.path.join(pickle_dir, "df_top_na.pkl"))
+    df_bot_numaligned.to_pickle(os.path.join(pickle_dir, "df_bot_na.pkl"))
 
     return
 

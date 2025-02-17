@@ -86,7 +86,7 @@ def set_up_environ(args):
 # -----------------------------------------------------------------------------
 
 
-def aggregate_data(args):
+def aggregate_data(args, take_last=True):
     """Aggregate encoding data
 
     Args:
@@ -110,7 +110,8 @@ def aggregate_data(args):
             if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
                 continue
             df = pd.read_csv(resultfn, header=None)
-            # df = df.iloc[[11], :]
+            if len(df) > 1 and take_last:
+                df = df.iloc[[-1], :]
             df.insert(0, "sid", load_sid)
             df.insert(0, "key", key)
             df.insert(0, "electrode", elec)
@@ -120,7 +121,7 @@ def aggregate_data(args):
     data = []
 
     for load_sid in args.sid:
-        for fmt, label in zip(args.formats, ["enca", "encb", "encab"]):
+        for fmt, label in zip(args.formats, ["enca", "encb", "encc", "encd"]):
             for key in args.keys:
                 fname = fmt % (load_sid, key)
                 read_file(fname)
@@ -199,6 +200,13 @@ def add_effect(args, df):
             df["effect"] = df1.shared / df3["max"]
             df.reset_index(inplace=True)
             args.color_split = [Colorbar(bar_min=0, bar_max=1)]
+        elif args.effect == "2col":
+            blue = "#0000ff"
+            red = "#ff0000"
+            df = df.loc[df.effect1 != df.effect2, :]
+            df["effect"] = red
+            df.loc[df.effect1 < df.effect2, "effect"] = blue
+            df.reset_index(inplace=True)
 
     elif len(args.formats) == 2:
         df["max"] = df.max(axis=1)
@@ -280,7 +288,7 @@ def plot_electrodes(fig, df, args):
     return fig
 
 
-def plot_brainmap_cat(args, df, outfile):
+def plot_brainmap_2d(args, df, outfile):
     """Plot brainmap plot given a df file with coordinates and effects
 
     Args:
@@ -309,13 +317,13 @@ def plot_brainmap_cat(args, df, outfile):
         width = 1000
     try:
         print(f"Writing to {outfile}")
-        fig.write_image(outfile, scale=36, width=width, height=1000)
+        fig.write_image(outfile, scale=10, width=width, height=1000)
     except:
         print("Not writing to file")
     return fig
 
 
-def make_brainmap_cat(args, df, outfile=""):
+def make_brainmap_2d(args, df, outfile=""):
     """Plot and Save brainmap plot given a pandas Series of effects
 
     Args:
@@ -361,7 +369,7 @@ def make_brainmap_cat(args, df, outfile=""):
     print(f"Number of electrodes for plotting: {len(df_plot)}")
 
     # Plot Brainmap
-    fig = plot_brainmap_cat(args, df_plot, outfile=outfile)
+    fig = plot_brainmap_2d(args, df_plot, outfile=outfile)
     return fig
 
 
@@ -372,6 +380,7 @@ def main():
 
     # Get effect
     df = aggregate_data(args)
+    # df = organize_data_elec_sig(args, df)
     df = organize_data(args, df)
     df = add_effect(args, df)
 
@@ -388,7 +397,7 @@ def main():
                 outfile,
             )
         else:
-            make_brainmap_cat(
+            make_brainmap_2d(
                 args,
                 df.loc[df.key == key, ("electrode", "effect")],
                 outfile,

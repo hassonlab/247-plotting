@@ -8,6 +8,8 @@ import pandas as pd
 from scipy.io import loadmat
 import plotly.graph_objects as go
 from PIL import Image
+import nibabel as nib
+from nilearn import datasets
 
 from tfsplt_encoding import organize_data
 
@@ -165,6 +167,8 @@ def aggregate_data(args):
             if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
                 continue
             df = pd.read_csv(resultfn, header=None)
+            if len(df) > 1:
+                df = df.iloc[[-1]]
             # df = df.T.iloc[[10], 1:]  # for Leo's results
             # df = df.iloc[[11], :] # for fold
             df.insert(0, "sid", load_sid)
@@ -209,7 +213,8 @@ def add_effect(args, df):
 
     if args.effect == "max":
         df["effect"] = df.max(axis=1)
-        color_split = [Colorbar(bar_min=0.04, bar_max=0.4)]
+        # color_split = [Colorbar(bar_min=0.04, bar_max=0.4)]
+        color_split = [Colorbar(bar_min=0, bar_max=0.4)]
     elif args.effect == "mean":
         df["effect"] = df.mean(axis=1)
         color_split = [Colorbar()]
@@ -313,6 +318,10 @@ def load_surf(args):
     elif args.hemisphere == "both":  # both hemispheres
         surf1 = loadmat(file[0])
         surf2 = loadmat(file[1])
+    elif args.hemisphere == "nilearn":
+        surf_data = datasets.fetch_surf_fsaverage()
+        surf1 = nib.load(surf_data["pial_left"]).agg_data()
+        surf2 = nib.load(surf_data["pial_right"]).agg_data()
     else:
         surf1 = surf2 = None
 
@@ -332,20 +341,37 @@ def plot_surf(fig, surf, args):
         fig (plotly graph object): brain map plot with brain surface added
     """
     print("Plot Hemisphere")
-    # Subtract 1 from every index to convert MATLAB indexing to Python indexing
-    surf["faces"] = np.array([conn_idx - 1 for conn_idx in surf["faces"]])
-    # Plot 3D surface plot of brain, colored according to depth
-    fig.add_trace(
-        go.Mesh3d(
-            x=surf["coords"][:, 0],
-            y=surf["coords"][:, 1],
-            z=surf["coords"][:, 2],
-            i=surf["faces"][:, 0],
-            j=surf["faces"][:, 1],
-            k=surf["faces"][:, 2],
-            color="rgb(175,175,175)",
+
+    if args.hemisphere == "nilearn":
+        fig.add_trace(
+            go.Mesh3d(
+                # coordinates
+                x=surf[0][:, 0],
+                y=surf[0][:, 1],
+                z=surf[0][:, 2],
+                # faces
+                i=surf[1][:, 0],
+                j=surf[1][:, 1],
+                k=surf[1][:, 2],
+                color="rgb(175,175,175)",
+            )
         )
-    )
+
+    else:
+        # Subtract 1 from every index to convert MATLAB indexing to Python indexing
+        surf["faces"] = np.array([conn_idx - 1 for conn_idx in surf["faces"]])
+        # Plot 3D surface plot of brain, colored according to depth
+        fig.add_trace(
+            go.Mesh3d(
+                x=surf["coords"][:, 0],
+                y=surf["coords"][:, 1],
+                z=surf["coords"][:, 2],
+                i=surf["faces"][:, 0],
+                j=surf["faces"][:, 1],
+                k=surf["faces"][:, 2],
+                color="rgb(175,175,175)",
+            )
+        )
 
     if args.final:
         ambient = 0.22
@@ -504,6 +530,12 @@ def update_properties(fig, args):
             up=dict(x=0, y=0, z=1),
             center=dict(x=0, y=0, z=0),
             eye=dict(x=-10, y=-0.15, z=-0.1),
+        )
+    elif args.hemisphere == "nilearn":
+        camera = dict(
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=-1.5, y=0.2, z=0),
         )
     else:
         camera = dict(  # Zaid's view

@@ -205,7 +205,9 @@ class Colormap2D(mpl.colors.Colormap):
         hflip=False,
         vflip=False,
     ):
-        I = plt.imread(f"data/plotting/cmaps/{cmap}.png")
+        I = plt.imread(
+            f"/scratch/gpfs/kw1166/247/247-plotting/data/plotting/cmaps/{cmap}.png"
+        )
         if hflip and vflip:
             I = np.flip(I, (0, 1))
         elif hflip:
