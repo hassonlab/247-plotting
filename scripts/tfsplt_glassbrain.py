@@ -120,19 +120,18 @@ def add_effect(args, df):
         df.reset_index(inplace=True)
 
     elif len(args.formats) == 2:
-        if args.effect == "gradient":
-            df["max"] = df.max(axis=1)
-            df1, df1_idx = get_part_df("enca")
-            df2, df2_idx = get_part_df("encb")
-            assert len(df1_idx) == len(df2_idx)
-            assert all([a == b for a, b in zip(df1_idx, df2_idx)])
-            df1.loc[:, "max2"] = df2["max"]
-            df1.loc[:, "effect"] = df1["max2"] - df1["max"]
+        df["max"] = df.max(axis=1)
+        df1, df1_idx = get_part_df("enca")
+        df2, df2_idx = get_part_df("encb")
+        assert len(df1_idx) == len(df2_idx)
+        assert all([a == b for a, b in zip(df1_idx, df2_idx)])
+        df1.loc[:, "max2"] = df2["max"]
+        df1.loc[:, "effect"] = df1["max2"] - df1["max"]
 
-        elif args.effect == "color":
+        if args.effect == "color":
             df1 = df1.loc[df1.effect != 0, :]
-            df1.loc[df1.effect > 0, "effect"] = 0.7
-            df1.loc[df1.effect < 0, "effect"] = -0.7
+            df1.loc[df1.effect > 0, "effect"] = 1
+            df1.loc[df1.effect < 0, "effect"] = 2
 
         df = df1
         df.reset_index(inplace=True)
@@ -176,11 +175,11 @@ def plot_glassbrain(args, df_plot, outfile=""):
         node_size=20,
         display_mode="l",
         # node_vmin=0,
-        # node_vmax=0.2,
-        # node_vmin=-0.2,
-        # node_vmax=0.2,
-        node_vmin=1,
-        node_vmax=20,
+        # node_vmax=0.25,
+        node_vmin=-0.2,
+        node_vmax=0.2,
+        # node_vmin=1,
+        # node_vmax=2,
         figure=fig,
         axes=axes,
         alpha=0.8,

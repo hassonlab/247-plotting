@@ -236,7 +236,10 @@ def aggregate_data(args):
         ), f"No results found under {fname}"  # check files exist under format
 
         for resultfn in files:
-            elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # changed for banded ridge filenames
+            elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:2])
+
             # Skip electrodes if they're not part of the sig list
             if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
                 continue
@@ -282,6 +285,9 @@ def organize_data(args, df):
         df (DataFrame): df with correct columns (lags)
     """
     df.set_index(["label", "electrode", "key", "sid"], inplace=True)
+    # loaded differently in banded, resorting
+    df.sort_index(level=['label', 'key', 'electrode', 'sid'], inplace=True)
+
     assert len(args.lags_plot) == len(
         df.columns
     ), f"args.lags_plot length ({len(args.lags_plot)}) must be the same size as results ({len(df.columns)})"

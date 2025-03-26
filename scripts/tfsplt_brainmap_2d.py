@@ -104,7 +104,9 @@ def aggregate_data(args, take_last=True):
         ), f"No results found under {fname}"  # check files exist under format
 
         for resultfn in files:
-            elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
+            # changed for banded ridge filenames
+            elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:2])
             # elec = os.path.basename(resultfn).replace(".csv", "")[:-10]
             # Skip electrodes if they're not part of the sig list
             if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
