@@ -93,10 +93,10 @@ def add_effect(args, df):
             df1.loc[:, "efnum"] = 4
             df1.loc[df1.max2.ge(df1.max1) & df1.max2.ge(df1.max3), "efcol"] = 0
             df1.loc[df1.max3.ge(df1.max1) & df1.max3.ge(df1.max2), "efcol"] = 1
-            df1 = df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0), :]
+            df1 = df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.05), :]
             df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.1), "efnum"] = 3
-            df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.2), "efnum"] = 2
-            df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.3), "efnum"] = 1
+            df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.15), "efnum"] = 2
+            df1.loc[df1[["max1", "max2", "max3"]].max(axis=1).ge(0.2), "efnum"] = 1
             df1.loc[:, "effect"] = df1.efcol * 4 + df1.efnum
 
         elif args.effect == "varpar":
@@ -149,7 +149,7 @@ def add_effect(args, df):
 # -----------------------------------------------------------------------------
 
 
-def plot_glassbrain(args, df_plot, outfile=""):
+def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None, ax=None):
     """Plot glass brain plot given a df file with coordinates and effects
 
     Args:
@@ -159,7 +159,10 @@ def plot_glassbrain(args, df_plot, outfile=""):
     Returns:
         fig (matplotlib object): brain map plot
     """
-    fig, axes = plt.subplots(1, 1, dpi=300, figsize=(8, 6))
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, dpi=300, figsize=(8, 6))
+    else:
+        fig = ax.figure
     coords = np.array([df_plot.MNI_X, df_plot.MNI_Y, df_plot.MNI_Z]).T
 
     if args.effect == "color":
@@ -176,19 +179,22 @@ def plot_glassbrain(args, df_plot, outfile=""):
         display_mode="l",
         # node_vmin=0,
         # node_vmax=0.25,
-        node_vmin=-0.2,
-        node_vmax=0.2,
+        node_vmin=vmin if vmin is not None else -0.1,
+        node_vmax=vmax if vmax is not None else 0.1,
         # node_vmin=1,
-        # node_vmax=2,
+        # node_vmax=20,
         figure=fig,
-        axes=axes,
+        axes=ax,
         alpha=0.8,
         node_cmap=cmap,
         colorbar=True,
     )
-    plt.savefig(outfile)
+    if show and ax is None:
+        plt.show()
+    if outfile and ax is None:
+        plt.savefig(outfile)
 
-    return
+    return ax
 
 
 def make_glassbrain(args, df, outfile=""):

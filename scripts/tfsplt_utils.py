@@ -216,7 +216,7 @@ class Colormap2D(mpl.colors.Colormap):
             I = np.flip(I, 1)
 
         cmap_new = mpl.colors.ListedColormap(np.squeeze(I))
-        plt.cm.register_cmap(cmap, cmap_new)
+        # plt.cm.register_cmap(cmap, cmap_new)
         self.cmap = cmap_new
         self.vmin = vmin
         self.vmax = vmax

@@ -238,7 +238,13 @@ def aggregate_data(args):
         for resultfn in files:
             # elec = os.path.basename(resultfn).replace(".csv", "")[:-5]
             # changed for banded ridge filenames
-            elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:2])
+            s = os.path.basename(resultfn).replace(".csv", "").split('_')[0]
+            if s in ['625', '676']:
+                elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:3])
+            else:
+                elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:2])
+            
+            # elec = '_'.join(os.path.basename(resultfn).replace(".csv", "").split('_')[:2])
 
             # Skip electrodes if they're not part of the sig list
             if len(args.sigelecs) and elec not in args.sigelecs[(load_sid, key)]:
