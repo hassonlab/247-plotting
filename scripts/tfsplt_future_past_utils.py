@@ -1171,6 +1171,9 @@ def plot_glassbrain_frame(df, lag, cmap, title, vmin=-0.1, vmax=0.3):
 
 def create_video(df, lags, cmap, title, output_path, vmin=-0.1, vmax=0.3, fps=10):
     """Create video from glass brain frames across lags."""
+    import matplotlib.animation as animation
+    from nilearn import plotting
+
     print(f"Creating video: {title}")
     print(f"  Frames: {len(lags)}")
     print(f"  Output: {output_path}")
