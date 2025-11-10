@@ -19,7 +19,7 @@ def plot_effect_glassbrain(
     df,
     effect_col,
     subjects=["625", "676", "717", "798"],
-    coords_dir="/scratch/gpfs/ij9216/projects/code/247/247-plotting/data/plotting/brainplot/",
+    coords_dir="/scratch/gpfs/HASSON/ij9216/projects/code/247/247-plotting/data/plotting/brainplot/",
     cmap=None,
     outfile="",
     show=True,
@@ -368,9 +368,9 @@ def process_shared_electrodes_roi(dfs, rois, results=['joint', 'word', 'sentence
     
     return shared_electrodes, filtered_dfs, roi_results
 
-def get_shared_indices(lags_large, lags_small):
+def get_shared_indices(lags_large, lags_small, lags_med=None):
     """
-    Get indices of shared lag values between two lag arrays.
+    Get indices of shared lag values between two or three lag arrays.
     
     Parameters:
     -----------
@@ -378,16 +378,39 @@ def get_shared_indices(lags_large, lags_small):
         Larger array of lag values
     lags_small : np.ndarray
         Smaller array of lag values
+    lags_med : np.ndarray, optional
+        Medium array of lag values (if provided, finds shared values across all three)
         
     Returns:
     --------
-    tuple : (shared_indices_large, shared_indices_small)
+    tuple : If lags_med is None:
+        (shared_indices_large, shared_indices_small)
         - shared_indices_large: indices in lags_large that are also in lags_small
         - shared_indices_small: indices in lags_small that are also in lags_large
+        
+    tuple : If lags_med is provided:
+        (shared_indices_large, shared_indices_med, shared_indices_small)
+        - shared_indices_large: indices in lags_large that are shared across all three
+        - shared_indices_med: indices in lags_med that are shared across all three
+        - shared_indices_small: indices in lags_small that are shared across all three
     """
-    shared_indices_large = np.nonzero(np.isin(lags_large, lags_small))[0]
-    shared_indices_small = np.nonzero(np.isin(lags_small, lags_large))[0]
-    return shared_indices_large, shared_indices_small
+    if lags_med is None:
+        # Original two-array behavior
+        shared_indices_large = np.nonzero(np.isin(lags_large, lags_small))[0]
+        shared_indices_small = np.nonzero(np.isin(lags_small, lags_large))[0]
+        return shared_indices_large, shared_indices_small
+    else:
+        # Three-array behavior: find values shared across all three
+        # Find intersection of all three arrays
+        shared_values = np.intersect1d(lags_large, lags_small)
+        shared_values = np.intersect1d(shared_values, lags_med)
+        
+        # Get indices in each array
+        shared_indices_large = np.nonzero(np.isin(lags_large, shared_values))[0]
+        shared_indices_med = np.nonzero(np.isin(lags_med, shared_values))[0]
+        shared_indices_small = np.nonzero(np.isin(lags_small, shared_values))[0]
+        
+        return shared_indices_large, shared_indices_med, shared_indices_small
 
 def select_shared_and_last_columns(df, shared_indices, last_n=5):
     """
@@ -410,3 +433,796 @@ def select_shared_and_last_columns(df, shared_indices, last_n=5):
     shared_columns = df.iloc[:, shared_indices]
     last_columns = df.iloc[:, -last_n:]
     return pd.concat([shared_columns, last_columns], axis=1)
+
+
+def calculate_auc(df, label3_val, lag_start, lag_end):
+    """
+    Calculate AUC for electrodes with a specific label3 value within a lag window.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with lag columns and label3
+    label3_val : str
+        'sentence', 'sentence2', 'joint', or 'word'
+    lag_start : int
+        Start of lag window (ms)
+    lag_end : int
+        End of lag window (ms)
+    
+    Returns:
+    --------
+    pd.DataFrame with electrode, subject, roi, auc columns
+    """
+    from scipy import integrate
+    
+    # Filter by label3
+    df_filt = df[df['label3'] == label3_val].copy()
+    
+    # Get lag columns within window (columns can be strings, integers, or floats)
+    lag_cols = []
+    lag_vals = []
+    for col in df_filt.columns:
+        # Check if column is numeric (int, float, or numpy numeric types)
+        # numpy types need special handling - convert to python types for comparison
+        if isinstance(col, (np.integer, np.floating)):
+            col_val = float(col)
+            if lag_start <= col_val <= lag_end:
+                lag_cols.append(col)
+                lag_vals.append(col_val)
+        elif isinstance(col, (int, float)):
+            col_val = float(col)
+            if lag_start <= col_val <= lag_end:
+                lag_cols.append(col)
+                lag_vals.append(col_val)
+        elif isinstance(col, str):
+            # Try to convert string to numeric
+            try:
+                col_val = float(col)
+                if lag_start <= col_val <= lag_end:
+                    lag_cols.append(col)
+                    lag_vals.append(col_val)
+            except (ValueError, TypeError):
+                continue
+    
+    if len(lag_cols) == 0:
+        print(f"Warning: No lag columns found in window [{lag_start}, {lag_end}]")
+        return pd.DataFrame(columns=['subject', 'electrode', 'roi', 'label3', 'lag_start', 'lag_end', 'auc', 'n_lags'])
+    
+    # Sort by numeric values
+    sorted_indices = np.argsort(lag_vals)
+    lag_cols_sorted = [lag_cols[i] for i in sorted_indices]
+    lag_vals_sorted = [lag_vals[i] for i in sorted_indices]
+    
+    results = []
+    
+    for idx, row in df_filt.iterrows():
+        # Get values in time window
+        vals = row[lag_cols_sorted].values
+        
+        # Calculate AUC using trapezoidal rule
+        # x values are the numeric lag values, y values are the correlations
+        auc = integrate.trapezoid(vals, x=lag_vals_sorted)
+        
+        results.append({
+            'subject': row['subject'],
+            'electrode': row['electrode'],
+            'roi': row.get('roi', 'unknown'),
+            'label3': label3_val,
+            'lag_start': lag_start,
+            'lag_end': lag_end,
+            'auc': auc,
+            'n_lags': len(lag_cols_sorted)
+        })
+    
+    return pd.DataFrame(results)
+
+
+def get_word_peak_share(df, thresh=0.1):
+    """
+    Calculate the ratio of word peak to joint peak for each electrode.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with label3 column and lag columns
+    thresh : float
+        Threshold for joint performance
+        
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with electrode, subject, word_peak_share columns
+    """
+    # Get numeric lag columns
+    lag_cols = [col for col in df.columns if isinstance(col, (int, float, np.integer, np.floating))]
+    
+    df['max'] = df[lag_cols].max(axis=1)
+    # make a df grouped by subject and electrode with max_{label3} columns
+    grouped = df.groupby(['subject', 'electrode', 'label3'])['max'].max().unstack().reset_index()
+    # make a new column with the ratio of word peak / joint peak
+    grouped = grouped[grouped['joint'] > thresh]
+    grouped['word_peak_share'] = grouped['word'] / (grouped['joint'])
+    return grouped
+
+
+def sigmoid(x, L, x0, k, b):
+    """
+    Sigmoid function with numerical stability.
+    
+    Parameters:
+    -----------
+    x : array
+        Independent variable (e.g., time lags)
+    L : float
+        Maximum value (upper asymptote)
+    x0 : float
+        Midpoint (inflection point)
+    k : float
+        Steepness/growth rate (positive=increasing, negative=decreasing)
+    b : float
+        Baseline offset (lower asymptote)
+    """
+    # Clip the exponent to avoid overflow
+    exponent = -k * (x - x0)
+    exponent = np.clip(exponent, -500, 500)  # Prevent overflow
+    return L / (1 + np.exp(exponent)) + b
+
+
+def fit_sigmoid_to_row(row_data, x_values, force_direction=None):
+    """
+    Fit sigmoid to a single row of data.
+    
+    Parameters:
+    -----------
+    row_data : array
+        Data to fit
+    x_values : array
+        X-axis values
+    force_direction : str or None
+        'increasing' for positive slope, 'decreasing' for negative slope
+    
+    Returns:
+    --------
+    dict with keys:
+        - 'L': upper asymptote
+        - 'x0': inflection point
+        - 'k': steepness
+        - 'b': baseline
+        - 'r_squared': goodness of fit
+        - 'fit_success': whether fitting succeeded
+        - 'fitted_curve': the fitted values
+    """
+    from scipy.optimize import curve_fit
+    import warnings
+    
+    try:
+        # Initial parameter guesses
+        L_init = np.max(row_data) - np.min(row_data)
+        x0_init = x_values[len(x_values) // 2]
+        b_init = np.min(row_data)
+        
+        # Set k_init and bounds based on direction
+        if force_direction == 'increasing':
+            k_init = 0.01
+            k_bounds = (0.0001, np.inf)  # Force positive k
+        elif force_direction == 'decreasing':
+            k_init = -0.01
+            k_bounds = (-np.inf, -0.0001)  # Force negative k
+        else:
+            k_init = 0.01
+            k_bounds = (-np.inf, np.inf)  # Allow both
+        
+        # Suppress overflow and invalid value warnings during fitting
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning)
+            
+            # Fit the sigmoid
+            popt, pcov = curve_fit(
+                sigmoid, 
+                x_values, 
+                row_data,
+                p0=[L_init, x0_init, k_init, b_init],
+                maxfev=10000,
+                bounds=([0, x_values[0], k_bounds[0], -np.inf], 
+                        [np.inf, x_values[-1], k_bounds[1], np.inf])
+            )
+        
+        # Calculate R-squared
+        fitted_curve = sigmoid(x_values, *popt)
+        ss_res = np.sum((row_data - fitted_curve) ** 2)
+        ss_tot = np.sum((row_data - np.mean(row_data)) ** 2)
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
+        
+        return {
+            'L': popt[0],           # Upper asymptote
+            'x0': popt[1],          # Inflection point (midpoint)
+            'k': popt[2],           # Steepness
+            'b': popt[3],           # Baseline
+            'r_squared': r_squared,
+            'fit_success': True,
+            'fitted_curve': fitted_curve,
+            'peak_slope': abs(popt[0] * popt[2] / 4),  # Absolute value of max slope
+            'direction': 'increasing' if popt[2] > 0 else 'decreasing'
+        }
+    except Exception as e:
+        return {
+            'L': np.nan,
+            'x0': np.nan,
+            'k': np.nan,
+            'b': np.nan,
+            'r_squared': np.nan,
+            'fit_success': False,
+            'fitted_curve': np.full_like(x_values, np.nan),
+            'peak_slope': np.nan,
+            'direction': 'failed',
+            'error': str(e)
+        }
+
+
+def fit_sigmoids_to_df(df, lag_start=-5000, lag_end=5000):
+    """
+    Fit sigmoid curves to sentence and sentence2 rows in a dataframe.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe with label3 column and lag columns (can be named with lag values)
+    lag_start : int
+        Start lag value in milliseconds (default: -5000)
+    lag_end : int
+        End lag value in milliseconds (default: 5000)
+    
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with sigmoid fit parameters
+    """
+    # Get lag columns within the specified range
+    lag_cols = []
+    lag_vals = []
+    for col in df.columns:
+        if isinstance(col, (int, float, np.integer, np.floating)):
+            col_val = float(col)
+            if lag_start <= col_val <= lag_end:
+                lag_cols.append(col)
+                lag_vals.append(col_val)
+    
+    if len(lag_cols) == 0:
+        print(f"Warning: No lag columns found in range [{lag_start}, {lag_end}]")
+        return pd.DataFrame()
+    
+    # Sort by lag values
+    sorted_indices = np.argsort(lag_vals)
+    lag_cols_sorted = [lag_cols[i] for i in sorted_indices]
+    lag_vals_sorted = np.array([lag_vals[i] for i in sorted_indices])
+    
+    # Create x_values for fitting (normalized indices)
+    x_values = np.arange(len(lag_cols_sorted))
+    
+    sigmoid_params = []
+    
+    inp_df = df[df['label3'].isin(['sentence', 'sentence2'])].copy()
+    counter = 0
+    for idx, row in inp_df.iterrows():
+        counter += 1
+        print(f"Fitting row {counter}/{len(inp_df)}", end='\r')
+        row_data = row[lag_cols_sorted].values
+        
+        # Determine direction based on label3
+        if inp_df.loc[idx, 'label3'] == 'sentence':
+            direction = 'increasing'
+        elif inp_df.loc[idx, 'label3'] == 'sentence2':
+            direction = 'decreasing'
+        else:
+            direction = None
+        
+        params = fit_sigmoid_to_row(row_data, x_values, force_direction=direction)
+        params['electrode'] = inp_df.loc[idx, 'electrode']
+        params['roi'] = inp_df.loc[idx, 'roi']
+        params['label3'] = inp_df.loc[idx, 'label3']
+        params['subject'] = inp_df.loc[idx, 'subject']
+        # Store the actual lag range used
+        params['lag_start'] = lag_start
+        params['lag_end'] = lag_end
+        sigmoid_params.append(params)
+    
+    print()  # New line after progress
+    return pd.DataFrame(sigmoid_params)
+
+
+def get_max_joint_performance(df, thresh=0.1):
+    """
+    Get maximum joint performance for each electrode.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame with label3 column and lag columns
+    thresh : float
+        Threshold for joint performance
+        
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with electrode, subject, roi, max_joint columns
+    """
+    joint_rows = df[df['label3'] == 'joint'].copy()
+    
+    # Get numeric lag columns
+    lag_cols = [col for col in joint_rows.columns if isinstance(col, (int, float, np.integer, np.floating))]
+    
+    # Calculate max for each electrode
+    joint_rows['max_joint'] = joint_rows[lag_cols].max(axis=1)
+    
+    # Filter by threshold
+    joint_rows = joint_rows[joint_rows['max_joint'] > thresh]
+    
+    return joint_rows[['subject', 'electrode', 'roi', 'max_joint']]
+
+
+def calculate_max_diff(df_original, df_control, label3_val, lag_cutoff, direction='future'):
+    """
+    Calculate difference in maximum values between original and control conditions.
+    
+    Parameters:
+    -----------
+    df_original : pd.DataFrame
+        Original encoding results
+    df_control : pd.DataFrame
+        Control condition encoding results (e.g., rand_m_diff_w, opp_m_diff_w)
+    label3_val : str
+        'sentence' or 'sentence2'
+    lag_cutoff : int
+        Lag value to split future/past (typically 0)
+    direction : str
+        'future' (lags <= cutoff) or 'past' (lags >= cutoff)
+        
+    Returns:
+    --------
+    pd.DataFrame
+        DataFrame with electrode, subject, roi, max_diff columns
+    """
+    # Filter by label3
+    df_orig_filt = df_original[df_original['label3'] == label3_val].copy()
+    df_ctrl_filt = df_control[df_control['label3'] == label3_val].copy()
+    
+    # Get numeric lag columns
+    lag_cols = [col for col in df_orig_filt.columns if isinstance(col, (int, float, np.integer, np.floating))]
+    
+    # Filter lag columns by direction
+    if direction == 'future':
+        lag_cols_filt = [col for col in lag_cols if float(col) <= lag_cutoff]
+    else:  # past
+        lag_cols_filt = [col for col in lag_cols if float(col) >= lag_cutoff]
+    
+    results = []
+    
+    for idx, row_orig in df_orig_filt.iterrows():
+        # Find matching electrode in control
+        row_ctrl = df_ctrl_filt[
+            (df_ctrl_filt['subject'] == row_orig['subject']) & 
+            (df_ctrl_filt['electrode'] == row_orig['electrode'])
+        ]
+        
+        if len(row_ctrl) == 0:
+            continue
+        
+        row_ctrl = row_ctrl.iloc[0]
+        
+        # Get max values
+        max_orig = row_orig[lag_cols_filt].max()
+        max_ctrl = row_ctrl[lag_cols_filt].max()
+        
+        results.append({
+            'subject': row_orig['subject'],
+            'electrode': row_orig['electrode'],
+            'roi': row_orig.get('roi', 'unknown'),
+            'label3': label3_val,
+            'direction': direction,
+            'max_original': max_orig,
+            'max_control': max_ctrl,
+            'max_diff': max_orig - max_ctrl
+        })
+    
+    return pd.DataFrame(results)
+
+# Make interactive videos (mp4/html)
+
+# Extract future and past data for specified lag range
+def prepare_video_data(df, thresh_df, label3_val, lags, df_coords):
+    """Prepare data for video: filter by label3, threshold, and extract specified lags."""
+    # Filter by label3
+    data = df[df['label3'] == label3_val].copy()
+    
+    # Merge with threshold info
+    data = data.merge(thresh_df, on=['subject', 'electrode'], how='inner')
+    
+    # Merge with coordinates
+    data['subject'] = data['subject'].astype(str)
+    data = data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                      on=['subject', 'electrode'], 
+                      how='left')
+    
+    # Check for missing coordinates
+    missing_coords = data[['x', 'y', 'z']].isna().any(axis=1).sum()
+    if missing_coords > 0:
+        print(f"  Warning: {missing_coords} electrodes missing coordinates")
+        data = data.dropna(subset=['x', 'y', 'z'])
+    
+    # Select metadata and lag columns
+    meta_cols = ['subject', 'electrode', 'roi', 'x', 'y', 'z', 'max_joint']
+    
+    # Ensure all requested lags exist in the data
+    available_lags = [lag for lag in lags if lag in data.columns]
+    
+    result = data[meta_cols + available_lags].copy()
+    
+    print(f"  {label3_val}: {len(result)} electrodes, {len(available_lags)} time points")
+    
+    return result
+
+def prepare_ratio_video_data(df, thresh_df, label3_numerator, label3_denominator, lags, df_coords, joint_max=False):
+    """Prepare ratio data for video: (numerator/denominator) for each lag."""
+    # Filter by label3 for numerator (future or past)
+    numerator_data = df[df['label3'] == label3_numerator].copy()
+    
+    # Merge with threshold info
+    numerator_data = numerator_data.merge(thresh_df, on=['subject', 'electrode'], how='inner')
+    
+    # Filter by label3 for denominator (joint)
+    denominator_data = df[df['label3'] == label3_denominator].copy()
+    
+    # Merge with threshold info for denominator
+    denominator_data = denominator_data.merge(thresh_df, on=['subject', 'electrode'], how='inner')
+    
+    # Convert subject to string for BOTH dataframes
+    numerator_data['subject'] = numerator_data['subject'].astype(str)
+    denominator_data['subject'] = denominator_data['subject'].astype(str)
+    
+    # Merge with coordinates
+    numerator_data = numerator_data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                                          on=['subject', 'electrode'], 
+                                          how='left')
+    
+    # Check for missing coordinates
+    missing_coords = numerator_data[['x', 'y', 'z']].isna().any(axis=1).sum()
+    if missing_coords > 0:
+        # print(f"  Warning: {missing_coords} electrodes missing coordinates")
+        numerator_data = numerator_data.dropna(subset=['x', 'y', 'z'])
+    
+    # Select metadata columns
+    meta_cols = ['subject', 'electrode', 'roi', 'x', 'y', 'z', 'max_joint']
+    
+    # Ensure all requested lags exist in the data
+    available_lags = [lag for lag in lags if lag in numerator_data.columns]
+    
+    # Create result dataframe with metadata
+    result = numerator_data[meta_cols].copy()
+    
+    if joint_max:
+        # Calculate the maximum joint value across all lags for each electrode
+        denominator_data['joint_max'] = denominator_data[available_lags].max(axis=1)
+        denominator_aligned = denominator_data[['subject', 'electrode', 'joint_max']].copy()
+    else:
+        # Use the joint value at each lag
+        denominator_aligned = denominator_data[['subject', 'electrode'] + available_lags].copy()
+    
+    # Rename lag columns in numerator and denominator for clarity
+    numerator_aligned = numerator_data[['subject', 'electrode'] + available_lags].copy()
+    numerator_aligned = numerator_aligned.rename(columns={lag: f"{lag}_num" for lag in available_lags})
+    
+    if not joint_max:
+        denominator_aligned = denominator_aligned.rename(columns={lag: f"{lag}_denom" for lag in available_lags})
+    
+    # Merge to ensure alignment
+    merged = numerator_aligned.merge(
+        denominator_aligned, 
+        on=['subject', 'electrode'], 
+        how='inner'
+    )
+    
+    # Calculate ratio for each lag
+    for lag in available_lags:
+        if joint_max:
+            denom_col = 'joint_max'
+        else:
+            denom_col = f'{lag}_denom'
+        
+        num_col = f'{lag}_num'
+        
+        # Calculate ratio (handle division by zero)
+        ratio = merged[num_col] / merged[denom_col].replace(0, np.nan)
+        
+        # Merge ratio back into result using subject-electrode match
+        ratio_df = merged[['subject', 'electrode']].copy()
+        ratio_df[lag] = ratio.values
+        
+        result = result.merge(ratio_df, on=['subject', 'electrode'], how='left')
+    
+    print(f"  {label3_numerator}/{label3_denominator}: {len(result)} electrodes, {len(available_lags)} time points")
+    
+    return result
+
+def create_interactive_brain_viz_html(future_df, word_df, past_df, lags, output_path, title_prefix="Comprehension", vmin=0.00, vmax=0.25):
+    """
+    Create an interactive HTML visualization using pre-rendered nilearn glass brain images.
+    Each frame is rendered as a matplotlib figure and embedded in Plotly.
+    """
+    
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+    import numpy as np
+    import io
+    import base64
+    from PIL import Image
+    from nilearn import plotting
+
+    print(f"Creating interactive HTML visualization with glass brains: {title_prefix}")
+    print(f"  Rendering {len(lags)} frames...")
+    
+    # Pre-render all frames as images
+    image_data = []
+    
+    for lag_idx, lag in enumerate(lags):
+        if lag_idx % 5 == 0:
+            print(f"  Rendering frame {lag_idx+1}/{len(lags)}")
+        
+        # Create figure with 3 rows
+        fig_mpl, axes = plt.subplots(3, 1, figsize=(14, 12))
+        
+        # Future (row 1)
+        plotting.plot_markers(
+            node_values=future_df[lag].values,
+            node_coords=future_df[['x', 'y', 'z']].values,
+            node_size=50,
+            node_cmap='Greens',
+            node_vmin=vmin,
+            node_vmax=vmax,
+            display_mode='lzry',
+            colorbar=True,
+            axes=axes[0],
+            title=f"Future (Sentence) - Lag: {lag} ms"
+        )
+        
+        # Word (row 2)
+        plotting.plot_markers(
+            node_values=word_df[lag].values,
+            node_coords=word_df[['x', 'y', 'z']].values,
+            node_size=50,
+            node_cmap='Oranges',
+            node_vmin=vmin,
+            node_vmax=vmax,
+            display_mode='lzry',
+            colorbar=True,
+            axes=axes[1],
+            title=f"Word - Lag: {lag} ms"
+        )
+        
+        # Past (row 3)
+        plotting.plot_markers(
+            node_values=past_df[lag].values,
+            node_coords=past_df[['x', 'y', 'z']].values,
+            node_size=50,
+            node_cmap='Reds',
+            node_vmin=vmin,
+            node_vmax=vmax,
+            display_mode='lzry',
+            colorbar=True,
+            axes=axes[2],
+            title=f"Past (Sentence2) - Lag: {lag} ms"
+        )
+        
+        plt.suptitle(f"{title_prefix} - Lag: {lag} ms", fontsize=16, y=0.995)
+        plt.tight_layout()
+        
+        # Convert to base64 image
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        plt.close(fig_mpl)
+        
+        image_data.append(f"data:image/png;base64,{img_base64}")
+    
+    print("  Creating interactive Plotly figure...")
+    
+    # Create Plotly figure with image frames
+    fig = go.Figure()
+    
+    # Add initial frame
+    fig.add_layout_image(
+        dict(
+            source=image_data[0],
+            xref="x",
+            yref="y",
+            x=0,
+            y=1,
+            sizex=1,
+            sizey=1,
+            sizing="stretch",
+            layer="below"
+        )
+    )
+    
+    # Create frames
+    frames = [
+        go.Frame(
+            layout=go.Layout(
+                images=[dict(
+                    source=img,
+                    xref="x",
+                    yref="y",
+                    x=0,
+                    y=1,
+                    sizex=1,
+                    sizey=1,
+                    sizing="stretch",
+                    layer="below"
+                )],
+                title=f"{title_prefix} - Lag: {lag} ms"
+            ),
+            name=str(lag)
+        )
+        for img, lag in zip(image_data, lags)
+    ]
+    
+    fig.frames = frames
+    
+    # Add slider
+    sliders = [dict(
+        active=0,
+        yanchor="top",
+        y=-0.1,
+        xanchor="left",
+        currentvalue=dict(
+            prefix="Lag (ms): ",
+            visible=True,
+            xanchor="right"
+        ),
+        transition=dict(duration=300),
+        pad=dict(b=10, t=50),
+        len=0.9,
+        x=0.05,
+        steps=[dict(
+            args=[[f.name], dict(
+                frame=dict(duration=300, redraw=True),
+                mode="immediate",
+                transition=dict(duration=300)
+            )],
+            label=str(lag),
+            method="animate"
+        ) for f, lag in zip(frames, lags)]
+    )]
+    
+    # Add play/pause buttons
+    updatemenus = [dict(
+        type="buttons",
+        direction="left",
+        x=0.05,
+        y=-0.15,
+        xanchor="left",
+        yanchor="top",
+        buttons=[
+            dict(label="▶ Play",
+                 method="animate",
+                 args=[None, dict(
+                     frame=dict(duration=500, redraw=True),
+                     fromcurrent=True,
+                     transition=dict(duration=300)
+                 )]),
+            dict(label="⏸ Pause",
+                 method="animate",
+                 args=[[None], dict(
+                     frame=dict(duration=0, redraw=False),
+                     mode="immediate",
+                     transition=dict(duration=0)
+                 )])
+        ]
+    )]
+    
+    # Update layout
+    fig.update_xaxes(visible=False, range=[0, 1])
+    fig.update_yaxes(visible=False, range=[0, 1])
+    
+    fig.update_layout(
+        title=f"{title_prefix} - Brain Activity Over Time",
+        height=900,
+        width=1000,
+        sliders=sliders,
+        updatemenus=updatemenus,
+        margin=dict(l=0, r=0, t=50, b=150),
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=False, zeroline=False)
+    )
+    
+    # Save to HTML
+    fig.write_html(output_path)
+    print(f"  ✓ Saved interactive HTML to: {output_path}\n")
+    
+    return fig
+
+def plot_glassbrain_frame(df, lag, cmap, title, vmin=-0.1, vmax=0.3):
+    """Plot a single glass brain frame for a specific lag."""
+    # Get coordinates and values for this lag
+    coords = df[['x', 'y', 'z']].values
+    values = df[lag].values
+    
+    # Create figure
+    fig = plt.figure(figsize=(12, 4))
+    
+    # Plot glass brain
+    display = plotting.plot_markers(
+        node_values=values,
+        node_coords=coords,
+        node_size=50,
+        node_cmap=cmap,
+        node_vmin=vmin,
+        node_vmax=vmax,
+        display_mode='lzry',
+        colorbar=True,
+        figure=fig
+    )
+    
+    # Add title with lag information
+    plt.suptitle(f"{title}\nLag: {lag} ms", fontsize=14, y=0.98)
+    
+    return fig
+
+def create_video(df, lags, cmap, title, output_path, vmin=-0.1, vmax=0.3, fps=10):
+    """Create video from glass brain frames across lags."""
+    import matplotlib.animation as animation
+    from nilearn import plotting
+
+    print(f"Creating video: {title}")
+    print(f"  Frames: {len(lags)}")
+    print(f"  Output: {output_path}")
+    
+    # Get coordinates (same for all frames)
+    coords = df[['x', 'y', 'z']].values
+    
+    # Set up the figure and animation
+    fig = plt.figure(figsize=(12, 4))
+    
+    def update_frame(frame_idx):
+        """Update function for animation."""
+        lag = lags[frame_idx]
+        values = df[lag].values
+        
+        # Clear previous frame
+        plt.clf()
+        
+        # Plot new frame
+        display = plotting.plot_markers(
+            node_values=values,
+            node_coords=coords,
+            node_size=50,
+            node_cmap=cmap,
+            node_vmin=vmin,
+            node_vmax=vmax,
+            display_mode='lzry',
+            colorbar=True,
+            figure=fig
+        )
+        
+        plt.suptitle(f"{title}\nLag: {lag} ms", fontsize=14, y=0.98)
+        
+        return fig,
+    
+    # Create animation
+    anim = animation.FuncAnimation(
+        fig, 
+        update_frame, 
+        frames=len(lags),
+        interval=1000/fps,  # milliseconds per frame
+        blit=False
+    )
+    
+    # Save video
+    writer = animation.FFMpegWriter(fps=fps, bitrate=1800)
+    anim.save(output_path, writer=writer)
+    
+    plt.close(fig)
+    print(f"  Video saved!\n")
+    
+    return anim
