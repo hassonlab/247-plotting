@@ -27,6 +27,7 @@ def plot_effect_glassbrain(
     vmax=1,
     ax=None,
     title=None,
+    colorbar=True,
 ):
 
 
@@ -47,20 +48,61 @@ def plot_effect_glassbrain(
     df_coor.loc[df_coor['subject'] == '717', 'subject'] = '7170'
     df_coor = df_coor.rename(columns={"name": "electrode"})
     grouped_plot = pd.merge(grouped_plot, df_coor, on=["subject", "electrode"], how="left")
-    ax = plot_glassbrain(args, grouped_plot, outfile=outfile if not show else "", show=show, vmin=vmin, vmax=vmax, ax=ax)
+    ax = plot_glassbrain(args, grouped_plot, outfile=outfile if not show else "", show=show, vmin=vmin, vmax=vmax, ax=ax, colorbar=colorbar)
     if title is not None and ax is not None:
         ax.set_title(title, fontsize=12, pad=10)
     return ax
 
+def filter_valid_rois(df, lines, rois):
+    """
+    Filter ROIs to only those that have data for at least one line.
+    
+    Parameters:
+    -----------
+    df : dict
+        Dictionary keyed by (line, roi) tuples containing DataFrames
+    lines : list
+        List of line names to check
+    rois : list
+        List of ROI names to filter
+        
+    Returns:
+    --------
+    list
+        Filtered list of ROIs that have data for at least one line
+    """
+    valid_rois = []
+    for roi in rois:
+        # Check if this ROI has data for at least one line
+        has_data = any((line, roi) in df and not df[(line, roi)].empty for line in lines)
+        if has_data:
+            valid_rois.append(roi)
+        # else:
+        #     print(f"  Skipping ROI '{roi}' - no data for any line")
+    
+    return valid_rois
+
+
 def plot_roi(args, df, mode="", ymax=None, save=True, plot_indiv=False):
     mode_full = "Comprehension" if mode == "comp" else "Production"
-    n_rois = len(args.rois)
+    
+    # Filter to only valid ROIs that have data
+    valid_rois = filter_valid_rois(df, args.lines, args.rois)
+    n_rois = len(valid_rois)
+    
+    if n_rois == 0:
+        print(f"Warning: No valid ROIs found with data. Skipping plot.")
+        return
+    
+    # print(f"Plotting {n_rois} ROIs (filtered from {len(args.rois)} total)")
+    
     if not save:
         ncols = 2
         nrows = math.ceil(n_rois / ncols)
         fig, axes = plt.subplots(nrows, ncols, figsize=(10 * ncols, 5 * nrows))
         axes = axes.flatten()
-    for i, roi in enumerate(args.rois):
+    
+    for i, roi in enumerate(valid_rois):
         if save:
             fig, ax = plt.subplots(figsize=(10, 5))
         else:
@@ -68,7 +110,6 @@ def plot_roi(args, df, mode="", ymax=None, save=True, plot_indiv=False):
         for idx, line in enumerate(args.lines):
             key = (line, roi)
             if key not in df:
-                print(f"Warning: Key {key} not found in the data. Skipping...")
                 continue
             n_elecs = len(df[key])
             label = f"{args.legends[idx]}"
@@ -90,6 +131,7 @@ def plot_roi(args, df, mode="", ymax=None, save=True, plot_indiv=False):
         ax.axvline(0, ls="dashed", alpha=0.3, c="k")
         ax.set_xticks(args.lags["lag_ticks"])
         ax.set_xticklabels(args.lags["lag_tick_labels"])
+        ax.set_xlim(min(args.lags["lags_plt"]), max(args.lags["lags_plt"]))
         plt.xticks(fontsize=16)
         plt.yticks(fontsize=16)
         ax.legend(loc="best", frameon=False, fontsize=10)
@@ -97,18 +139,233 @@ def plot_roi(args, df, mode="", ymax=None, save=True, plot_indiv=False):
         if save:
             plt.tight_layout()
             plt.subplots_adjust(left=0.15, top=0.85)
-            plt.savefig(f"{args.res_dir}/{roi}_{mode}.jpeg")
+            if save == 'svg':
+                plt.savefig(f"{args.res_dir}/{roi}_{mode}.svg")
+            else:
+                plt.savefig(f"{args.res_dir}/{roi}_{mode}.jpeg")
             plt.close(fig)
     if not save:
         plt.tight_layout()
         plt.show()
     return
 
+def plot_roi_sep_context(args, df, mode="", ymax=None, save=True, plot_indiv=False, context_thresh_f=0, context_thresh_p=0):
+    """
+    Plot ROIs with separate context coloring.
+    Future (sentence) after context_thresh_f and Past (sentence2) before context_thresh_p are plotted in 'dimgrey'.
+    
+    Parameters:
+    -----------
+    args : Args object
+        Contains configuration parameters
+    df : dict
+        Dictionary keyed by (line, roi) tuples containing DataFrames
+    mode : str
+        "comp" or "prod"
+    ymax : float
+        Maximum y-axis value
+    save : bool
+        Whether to save individual figures
+    plot_indiv : bool or str
+        Whether to plot individual electrodes
+    context_thresh : int
+        Lag threshold in milliseconds to separate context from target.
+        Future after this threshold is context (grey).
+        Past before this threshold is context (grey).
+    """
+    mode_full = "Comprehension" if mode == "comp" else "Production"
+    
+    # Filter to only valid ROIs that have data
+    valid_rois = filter_valid_rois(df, args.lines, args.rois)
+    n_rois = len(valid_rois)
+    
+    if n_rois == 0:
+        print(f"Warning: No valid ROIs found with data. Skipping plot.")
+        return
+    
+    if not save:
+        ncols = 2
+        nrows = math.ceil(n_rois / ncols)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(10 * ncols, 5 * nrows))
+        axes = axes.flatten()
+    
+    for i, roi in enumerate(valid_rois):
+        if save:
+            fig, ax = plt.subplots(figsize=(10, 5))
+        else:
+            ax = axes[i]
+        
+        for idx, line in enumerate(args.lines):
+            key = (line, roi)
+            if key not in df:
+                continue
+            n_elecs = len(df[key])
+            
+            # Determine if this line should be split into target and context
+            if line == 'sentence':
+                # Future: target before/at threshold, context after
+                label_target = f"{args.legends[idx]} (target)"
+                label_context = f"{args.legends[idx]} (context)"
+                ax = plot_line_sep_context(
+                    ax, args.lags, df[key], args.colors[idx], 'dimgrey',
+                    label_target, label_context, context_thresh_f, split_after=True
+                )
+            elif line == 'sentence2':
+                # Past: context before threshold, target after/at
+                label_target = f"{args.legends[idx]} (target)"
+                label_context = f"{args.legends[idx]} (context)"
+                ax = plot_line_sep_context(
+                    ax, args.lags, df[key], args.colors[idx], 'dimgrey',
+                    label_target, label_context, context_thresh_p, split_after=False
+                )
+            else:
+                # Word and joint: no split, use original color
+                label = f"{args.legends[idx]}"
+                if plot_indiv == line:
+                    ax = plot_all_indiv_electrodes(ax, args.lags, df[key], args.colors[idx], label)
+                elif plot_indiv == False:
+                    ax = plot_line(ax, args.lags, df[key], args.colors[idx], label)
+                else:
+                    continue
+        
+        if ymax:
+            ax.set_ylim(top=ymax, bottom=-0.025)
+        ymin, ymax_val = ax.get_ylim()
+        # if mode == "comp":
+        #     rect1 = patches.Rectangle((50, ymin), 450, ymax_val - ymin, color="yellowgreen", alpha=0.3, label="_nolegend_")
+        # elif mode == "prod":
+        #     rect1 = patches.Rectangle((-500, ymin), 450, ymax_val - ymin, color="indianred", alpha=0.3, label="_nolegend_")
+        # ax.add_patch(rect1)
+        ax.axhline(0, ls="dashed", alpha=0.3, c="k")
+        ax.axvline(0, ls="dashed", alpha=0.3, c="k")
+        ax.axvline(context_thresh_f, ls="dotted", alpha=0.5, c="purple", lw=2)  # Mark context threshold
+        ax.set_xticks(args.lags["lag_ticks"])
+        ax.set_xticklabels(args.lags["lag_tick_labels"])
+        ax.set_xlim(min(args.lags["lags_plt"]), max(args.lags["lags_plt"]))
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        ax.legend(loc="best", frameon=False, fontsize=10)
+        ax.set_title(f"{mode_full} ({roi} - n={n_elecs})", fontsize=14)
+        if save:
+            plt.tight_layout()
+            plt.subplots_adjust(left=0.15, top=0.85)
+            if save == 'svg':
+                plt.savefig(f"{args.res_dir}/{roi}_{mode}_sep_context_{context_thresh_f}.svg")
+            else:
+                plt.savefig(f"{args.res_dir}/{roi}_{mode}_sep_context_{context_thresh_f}.jpeg")
+            plt.close(fig)
+    if not save:
+        plt.tight_layout()
+        plt.show()
+    return
+
+def plot_line_sep_context(ax, args, df, color_target, color_context, label_target, label_context, 
+                          context_thresh, split_after=True):
+    """
+    Plot a line with separate colors for target and context regions.
+    
+    Parameters:
+    -----------
+    ax : matplotlib axis
+        Axis to plot on
+    args : dict
+        Dictionary with 'lags_all' and 'lags_plt' keys
+    df : DataFrame
+        Data to plot
+    color_target : str
+        Color for target region
+    color_context : str
+        Color for context region
+    label_target : str
+        Label for target region
+    label_context : str
+        Label for context region
+    context_thresh : int
+        Lag threshold in milliseconds
+    split_after : bool
+        If True: target <= thresh, context > thresh (for future/sentence)
+        If False: context < thresh, target >= thresh (for past/sentence2)
+    """
+    # Select lag indices that correspond to lags_plt
+    lags_selected_indices = []
+    lags_selected_values = []
+    for lag_val in args["lags_plt"]:
+        if lag_val in args["lags_all"]:
+            idx = np.where(np.array(args["lags_all"]) == lag_val)[0][0]
+            lags_selected_indices.append(str(idx))
+            lags_selected_values.append(lag_val)
+    
+    if not lags_selected_indices:
+        print(f"Warning: No matching lag columns found for plotting")
+        return ax
+    
+    vals = df[lags_selected_indices].mean(axis=0).values
+    errs = df[lags_selected_indices].sem(axis=0).values
+    lags_array = np.array(lags_selected_values)
+    
+    # Split into target and context regions
+    if split_after:
+        # Target: lags <= threshold, Context: lags >= threshold (overlap at threshold for continuity)
+        target_mask = lags_array <= context_thresh
+        context_mask = lags_array >= context_thresh
+    else:
+        # Context: lags <= threshold, Target: lags >= threshold (overlap at threshold for continuity)
+        context_mask = lags_array <= context_thresh
+        target_mask = lags_array >= context_thresh
+    
+    # Plot target region
+    if np.any(target_mask):
+        ax.plot(
+            lags_array[target_mask],
+            vals[target_mask],
+            color=color_target,
+            label=label_target,
+            lw=2.5,
+        )
+        ax.fill_between(
+            lags_array[target_mask],
+            vals[target_mask] - errs[target_mask],
+            vals[target_mask] + errs[target_mask],
+            alpha=0.2,
+            color=color_target,
+        )
+    
+    # Plot context region
+    if np.any(context_mask):
+        ax.plot(
+            lags_array[context_mask],
+            vals[context_mask],
+            color=color_context,
+            label=label_context,
+            lw=2.5,
+            linestyle='--',  # Dashed line for context
+        )
+        ax.fill_between(
+            lags_array[context_mask],
+            vals[context_mask] - errs[context_mask],
+            vals[context_mask] + errs[context_mask],
+            alpha=0.2,
+            color=color_context,
+        )
+    
+    return ax
+
 def plot_line(ax, args, df, color, label):
-    lags_selected = [lag_idx for lag_idx, lag in enumerate(args["lags_all"]) if lag in args["lags_plt"]]
-    vals = df.iloc[:,lags_selected].mean(axis=0)
+    # Select lag indices that correspond to lags_plt
+    # lags_all contains the actual lag values, and we need to find indices for lags_plt
+    lags_selected_indices = []
+    for lag_val in args["lags_plt"]:
+        if lag_val in args["lags_all"]:
+            idx = np.where(np.array(args["lags_all"]) == lag_val)[0][0]
+            lags_selected_indices.append(str(idx))
+    
+    if not lags_selected_indices:
+        print(f"Warning: No matching lag columns found for plotting")
+        return ax
+    
+    vals = df[lags_selected_indices].mean(axis=0)
     # vals = vals - vals[0]
-    errs = df.iloc[:,lags_selected].sem(axis=0)
+    errs = df[lags_selected_indices].sem(axis=0)
     ax.plot(
         # args["lags"],
         args["lags_plt"],
@@ -128,10 +385,20 @@ def plot_line(ax, args, df, color, label):
     return ax
 
 def plot_all_indiv_electrodes(ax, args, df, color, label):
-    lags_selected = [lag_idx for lag_idx, lag in enumerate(args["lags_all"]) if lag in args["lags_plt"]]
-    vals = df.iloc[:, lags_selected].mean(axis=0)
-    errs = df.iloc[:, lags_selected].sem(axis=0)
-    indiv_vals = df.iloc[:, lags_selected]
+    # Select lag indices that correspond to lags_plt
+    lags_selected_indices = []
+    for lag_val in args["lags_plt"]:
+        if lag_val in args["lags_all"]:
+            idx = np.where(np.array(args["lags_all"]) == lag_val)[0][0]
+            lags_selected_indices.append(str(idx))
+    
+    if not lags_selected_indices:
+        print(f"Warning: No matching lag columns found for plotting")
+        return ax
+    
+    vals = df[lags_selected_indices].mean(axis=0)
+    errs = df[lags_selected_indices].sem(axis=0)
+    indiv_vals = df[lags_selected_indices]
     # Use a colormap for individual lines
     cmap = plt.get_cmap('tab20')
     n_lines = indiv_vals.shape[0]
@@ -944,6 +1211,94 @@ def prepare_ratio_video_data(df, thresh_df, label3_numerator, label3_denominator
     
     return result
 
+def prepare_all_ratio_video_data(df, thresh_df, lags, df_coords, joint_max=True):
+    """Calculate future, word, and past ratios simultaneously to ensure consistency."""
+    
+    print("Preparing all ratio video data...")
+    
+    # Get the three numerators and the denominator
+    future_data = df[df['label3'] == 'sentence'].copy()
+    word_data = df[df['label3'] == 'word'].copy()
+    past_data = df[df['label3'] == 'sentence2'].copy()
+    joint_data = df[df['label3'] == 'joint'].copy()
+    
+    # Convert subject to string for ALL dataframes (including thresh_df and df_coords)
+    thresh_df = thresh_df.copy()
+    thresh_df['subject'] = thresh_df['subject'].astype(str)
+    
+    df_coords = df_coords.copy()
+    df_coords['subject'] = df_coords['subject'].astype(str)
+    
+    # Convert subject to string in data
+    for data in [future_data, word_data, past_data, joint_data]:
+        data['subject'] = data['subject'].astype(str)
+    
+    # Merge with thresholds and coordinates (reassign, not inplace)
+    future_data = future_data.merge(thresh_df[['subject', 'electrode', 'max_joint']], 
+                                     on=['subject', 'electrode'], how='inner')
+    future_data = future_data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                                     on=['subject', 'electrode'], how='left')
+    
+    word_data = word_data.merge(thresh_df[['subject', 'electrode', 'max_joint']], 
+                                 on=['subject', 'electrode'], how='inner')
+    word_data = word_data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                                 on=['subject', 'electrode'], how='left')
+    
+    past_data = past_data.merge(thresh_df[['subject', 'electrode', 'max_joint']], 
+                                 on=['subject', 'electrode'], how='inner')
+    past_data = past_data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                                 on=['subject', 'electrode'], how='left')
+    
+    joint_data = joint_data.merge(thresh_df[['subject', 'electrode', 'max_joint']], 
+                                   on=['subject', 'electrode'], how='inner')
+    joint_data = joint_data.merge(df_coords[['subject', 'electrode', 'x', 'y', 'z']], 
+                                   on=['subject', 'electrode'], how='left')
+    
+    # Drop rows with missing coordinates
+    future_data = future_data.dropna(subset=['x', 'y', 'z'])
+    word_data = word_data.dropna(subset=['x', 'y', 'z'])
+    past_data = past_data.dropna(subset=['x', 'y', 'z'])
+    joint_data = joint_data.dropna(subset=['x', 'y', 'z'])
+    
+    # Available lags
+    available_lags = [lag for lag in lags if lag in joint_data.columns]
+    
+    # Calculate joint denominator
+    if joint_max:
+        # Use maximum joint value across all lags for each electrode
+        joint_data['joint_denom'] = joint_data[available_lags].max(axis=1)
+    
+    # Create base dataframe with metadata (using joint_data as reference)
+    base = joint_data[['subject', 'electrode', 'roi', 'x', 'y', 'z', 'max_joint']].copy()
+    
+    # Set index for efficient lookup
+    future_indexed = future_data.set_index(['subject', 'electrode'])
+    word_indexed = word_data.set_index(['subject', 'electrode'])
+    past_indexed = past_data.set_index(['subject', 'electrode'])
+    joint_indexed = joint_data.set_index(['subject', 'electrode'])
+    
+    results = {}
+    for name, data_indexed in [('future', future_indexed), ('word', word_indexed), ('past', past_indexed)]:
+        result = base.copy()
+        
+        for lag in available_lags:
+            # Get numerator values
+            num = data_indexed[lag].reindex(result.set_index(['subject', 'electrode']).index)
+            
+            # Get denominator values
+            if joint_max:
+                denom = joint_indexed['joint_denom'].reindex(result.set_index(['subject', 'electrode']).index)
+            else:
+                denom = joint_indexed[lag].reindex(result.set_index(['subject', 'electrode']).index)
+            
+            # Calculate ratio
+            result[lag] = (num / denom.replace(0, np.nan)).values
+        
+        results[name] = result
+        print(f"  {name}: {len(result)} electrodes, {len(available_lags)} lags")
+    
+    return results['future'], results['word'], results['past']
+
 def create_interactive_brain_viz_html(future_df, word_df, past_df, lags, output_path, title_prefix="Comprehension", vmin=0.00, vmax=0.25):
     """
     Create an interactive HTML visualization using pre-rendered nilearn glass brain images.
@@ -1226,3 +1581,156 @@ def create_video(df, lags, cmap, title, output_path, vmin=-0.1, vmax=0.3, fps=10
     print(f"  Video saved!\n")
     
     return anim
+
+
+def calc_max_diff_percentile(dfs, percentile=99.5):
+    """
+    Calculate the maximum absolute difference value at a given percentile across multiple dataframes.
+    
+    Parameters:
+    -----------
+    dfs : list of DataFrames
+        List of dataframes to calculate percentiles from
+    percentile : float
+        Percentile to use (default 99.5)
+        
+    Returns:
+    --------
+    float
+        Maximum absolute value at the specified percentile
+    """
+    max_vals = []
+    for df in dfs:
+        # Get all numeric columns (lag columns)
+        numeric_cols = [col for col in df.columns if col not in ['subject', 'electrode', 'roi', 'label3', 'x', 'y', 'z']]
+        if numeric_cols:
+            vals = df[numeric_cols].abs().values.flatten()
+            vals = vals[~np.isnan(vals)]
+            if len(vals) > 0:
+                max_vals.append(np.percentile(vals, percentile))
+    
+    return max(max_vals) if max_vals else 1.0
+
+
+def plot_all_lines_across_datasets(args, sig_results_dict, roi, mode="comp", ymax=0.18, save=False, titles=None):
+    """
+    Plot all lines (joint, word, sentence, sentence2) across multiple datasets in a row of subplots.
+    Each subplot shows one line type with different datasets in different shades.
+    
+    Parameters:
+    -----------
+    args : Args object
+        Contains configuration parameters
+    sig_results_dict : dict
+        Dictionary keyed by (i, line, roi) containing DataFrames
+    roi : str
+        ROI name to plot
+    mode : str
+        "comp" or "prod"
+    ymax : float
+        Maximum y-axis value
+    save : bool
+        Whether to save the figure
+    titles : list of str, optional
+        Custom titles for each dataset. If None, uses generic titles.
+    """
+    # Determine number of datasets from keys
+    dataset_indices = sorted(set(key[0] for key in sig_results_dict.keys()))
+    n_datasets = len(dataset_indices)
+    
+    if titles is None:
+        titles = [f"Dataset {i+1}" for i in range(n_datasets)]
+    
+    # Create figure with 4 subplots in a row
+    n_lines = len(args.lines)
+    fig, axes = plt.subplots(1, n_lines, figsize=(20, 5))
+    
+    # Plot each line type in its own subplot
+    for line_idx, line in enumerate(args.lines):
+        ax = axes[line_idx]
+        
+        # Get base color for this line
+        base_color = args.colors[line_idx]
+        
+        # Darken base color if more than 3 datasets for better contrast
+        if n_datasets > 3:
+            import matplotlib.colors as mcolors
+            # Convert to RGB, darken by 20%, then back to hex/name
+            rgb = mcolors.to_rgb(base_color)
+            darkened_rgb = tuple(max(0, c * 0.8) for c in rgb)
+            base_color = darkened_rgb
+        
+        # Plot each dataset with different opacity/shade (REVERSED)
+        for i, dataset_idx in enumerate(dataset_indices):
+            # Create progressively darker/lighter shades with higher contrast (REVERSED ORDER)
+            alpha = 1.0 - (0.8 * i / max(1, n_datasets - 1))  # Range from 1.0 to 0.2 (increased contrast)
+            
+            key = (dataset_idx, line, roi)
+            
+            if key not in sig_results_dict or sig_results_dict[key].empty:
+                continue
+            
+            df_line = sig_results_dict[key]
+            
+            # Count electrodes
+            n_elecs = len(df_line)
+            label = f"{titles[i]} (n={n_elecs})"
+            
+            # Plot line with varying alpha
+            lags_selected = [lag_idx for lag_idx, lag in enumerate(args.lags["lags_all"]) 
+                            if lag in args.lags["lags_plt"]]
+            vals = df_line.iloc[:, lags_selected].mean(axis=0)
+            errs = df_line.iloc[:, lags_selected].sem(axis=0)
+            
+            ax.plot(
+                args.lags["lags_plt"],
+                vals,
+                color=base_color,
+                alpha=alpha,
+                label=label,
+                lw=2.0, 
+            )
+            ax.fill_between(
+                args.lags["lags_plt"],
+                vals - errs,
+                vals + errs,
+                alpha=alpha * 0.25, 
+                color=base_color,
+            )
+        
+        # Ax cosmetics
+        if ymax is not None:
+            ax.set_ylim(top=ymax, bottom=-0.025)
+        ymin, ymax_val = ax.get_ylim()
+        
+        # Shade time window
+        if mode == "comp":
+            rect1 = patches.Rectangle((50, ymin), 450, ymax_val - ymin, 
+                                      color="yellowgreen", alpha=0.3, label="_nolegend_")
+        elif mode == "prod":
+            rect1 = patches.Rectangle((-500, ymin), 450, ymax_val - ymin, 
+                                      color="indianred", alpha=0.3, label="_nolegend_")
+        ax.add_patch(rect1)
+        
+        ax.axhline(0, ls="dashed", alpha=0.3, c="k")
+        ax.axvline(0, ls="dashed", alpha=0.3, c="k")
+        ax.set_xticks(args.lags["lag_ticks"])
+        ax.set_xticklabels(args.lags["lag_tick_labels"])
+        ax.tick_params(axis='both', which='both', labelsize=10)
+        
+        ax.legend(loc="best", frameon=False, fontsize=9)
+        
+        mode_full = "Comprehension" if mode == "comp" else "Production"
+        ax.set_title(f"{args.legends[line_idx]}", fontsize=12)
+        
+    
+    # Add overall title
+    mode_full = "Comprehension" if mode == "comp" else "Production"
+    fig.suptitle(f"{mode_full} - {roi}", fontsize=14, y=1.02)
+    
+    plt.tight_layout()
+    if save:
+        plt.savefig(f"{args.res_dir}/{roi}_all_lines_overlay_{mode}.jpeg", bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
