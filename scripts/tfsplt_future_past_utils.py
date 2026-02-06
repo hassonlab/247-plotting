@@ -8,6 +8,7 @@ import matplotlib.patches as patches
 import sys
 from tfsplt_glassbrain import plot_glassbrain
 from tfsplt_brainmap import read_coor
+import inspect
 
 
 
@@ -48,7 +49,24 @@ def plot_effect_glassbrain(
     df_coor.loc[df_coor['subject'] == '717', 'subject'] = '7170'
     df_coor = df_coor.rename(columns={"name": "electrode"})
     grouped_plot = pd.merge(grouped_plot, df_coor, on=["subject", "electrode"], how="left")
-    ax = plot_glassbrain(args, grouped_plot, outfile=outfile if not show else "", show=show, vmin=vmin, vmax=vmax, ax=ax, colorbar=colorbar)
+
+    # Backward/forward compatibility: some plot_glassbrain versions don't take `colorbar`.
+    kwargs = {
+        "outfile": outfile if not show else "",
+        "show": show,
+        "vmin": vmin,
+        "vmax": vmax,
+        "ax": ax,
+    }
+    try:
+        sig = inspect.signature(plot_glassbrain)
+        if "colorbar" in sig.parameters:
+            kwargs["colorbar"] = colorbar
+    except (TypeError, ValueError):
+        # If signature introspection fails, call without `colorbar`.
+        pass
+
+    ax = plot_glassbrain(args, grouped_plot, **kwargs)
     if title is not None and ax is not None:
         ax.set_title(title, fontsize=12, pad=10)
     return ax
@@ -351,21 +369,55 @@ def plot_line_sep_context(ax, args, df, color_target, color_context, label_targe
     return ax
 
 def plot_line(ax, args, df, color, label):
-    # Select lag indices that correspond to lags_plt
-    # lags_all contains the actual lag values, and we need to find indices for lags_plt
-    lags_selected_indices = []
-    for lag_val in args["lags_plt"]:
-        if lag_val in args["lags_all"]:
-            idx = np.where(np.array(args["lags_all"]) == lag_val)[0][0]
-            lags_selected_indices.append(str(idx))
-    
-    if not lags_selected_indices:
-        print(f"Warning: No matching lag columns found for plotting")
+    desired_lags = list(args["lags_plt"])
+    lags_all = list(args["lags_all"])
+
+    def _select_lag_columns(_df: pd.DataFrame) -> pd.DataFrame:
+        # 1) Columns are lag values directly (common case)
+        desired_as_str = [str(l) for l in desired_lags]
+        if all(c in _df.columns for c in desired_as_str):
+            return _df[desired_as_str]
+        if all(l in _df.columns for l in desired_lags):
+            return _df[desired_lags]
+
+        # 2) Columns are coercible to ints matching lag values
+        col_to_int = {}
+        for c in _df.columns:
+            try:
+                col_to_int[c] = int(c)
+            except Exception:
+                continue
+        if col_to_int:
+            needed = set(desired_lags)
+            have = {v for v in col_to_int.values()}
+            if needed.issubset(have):
+                inv = {v: k for k, v in col_to_int.items()}
+                return _df[[inv[l] for l in desired_lags]]
+
+        # 3) Fallback: many of our result DataFrames store lag columns as numeric
+        # (often renamed to original column indices like '560'..'640') plus trailing
+        # metadata columns (subject/electrode/roi/etc). Prefer numeric-only columns.
+        numeric_df = _df.select_dtypes(include=[np.number])
+        if not numeric_df.empty:
+            n_lags_all = len(lags_all)
+            if numeric_df.shape[1] == n_lags_all and n_lags_all > 0:
+                idxs = [lags_all.index(l) for l in desired_lags if l in lags_all]
+                if len(idxs) == len(desired_lags):
+                    return numeric_df.iloc[:, idxs]
+            if numeric_df.shape[1] >= len(desired_lags):
+                return numeric_df.iloc[:, : len(desired_lags)]
+
+        raise KeyError("No matching lag columns found for plotting")
+
+    try:
+        df_sel = _select_lag_columns(df)
+    except KeyError:
+        print("Warning: No matching lag columns found for plotting")
         return ax
-    
-    vals = df[lags_selected_indices].mean(axis=0)
+
+    vals = df_sel.mean(axis=0)
     # vals = vals - vals[0]
-    errs = df[lags_selected_indices].sem(axis=0)
+    errs = df_sel.sem(axis=0)
     ax.plot(
         # args["lags"],
         args["lags_plt"],
@@ -385,20 +437,49 @@ def plot_line(ax, args, df, color, label):
     return ax
 
 def plot_all_indiv_electrodes(ax, args, df, color, label):
-    # Select lag indices that correspond to lags_plt
-    lags_selected_indices = []
-    for lag_val in args["lags_plt"]:
-        if lag_val in args["lags_all"]:
-            idx = np.where(np.array(args["lags_all"]) == lag_val)[0][0]
-            lags_selected_indices.append(str(idx))
-    
-    if not lags_selected_indices:
-        print(f"Warning: No matching lag columns found for plotting")
+    desired_lags = list(args["lags_plt"])
+    lags_all = list(args["lags_all"])
+
+    def _select_lag_columns(_df: pd.DataFrame) -> pd.DataFrame:
+        desired_as_str = [str(l) for l in desired_lags]
+        if all(c in _df.columns for c in desired_as_str):
+            return _df[desired_as_str]
+        if all(l in _df.columns for l in desired_lags):
+            return _df[desired_lags]
+
+        col_to_int = {}
+        for c in _df.columns:
+            try:
+                col_to_int[c] = int(c)
+            except Exception:
+                continue
+        if col_to_int:
+            needed = set(desired_lags)
+            have = {v for v in col_to_int.values()}
+            if needed.issubset(have):
+                inv = {v: k for k, v in col_to_int.items()}
+                return _df[[inv[l] for l in desired_lags]]
+
+        numeric_df = _df.select_dtypes(include=[np.number])
+        if not numeric_df.empty:
+            n_lags_all = len(lags_all)
+            if numeric_df.shape[1] == n_lags_all and n_lags_all > 0:
+                idxs = [lags_all.index(l) for l in desired_lags if l in lags_all]
+                if len(idxs) == len(desired_lags):
+                    return numeric_df.iloc[:, idxs]
+            if numeric_df.shape[1] >= len(desired_lags):
+                return numeric_df.iloc[:, : len(desired_lags)]
+
+        raise KeyError("No matching lag columns found for plotting")
+
+    try:
+        indiv_vals = _select_lag_columns(df)
+    except KeyError:
+        print("Warning: No matching lag columns found for plotting")
         return ax
-    
-    vals = df[lags_selected_indices].mean(axis=0)
-    errs = df[lags_selected_indices].sem(axis=0)
-    indiv_vals = df[lags_selected_indices]
+
+    vals = indiv_vals.mean(axis=0)
+    errs = indiv_vals.sem(axis=0)
     # Use a colormap for individual lines
     cmap = plt.get_cmap('tab20')
     n_lines = indiv_vals.shape[0]
@@ -439,13 +520,28 @@ def add_roi_label_to_results(df):
 
 
 def threshold_results_by_joint(df, thresh):
-    joint_rows = df[df['label3'] == 'joint']
-    max_mask = joint_rows.iloc[:, :-5].max(axis=1) > thresh
-    subject_electrode_list = [f"{row['subject']}_{row['electrode']}" for _, row in joint_rows[max_mask].iterrows()]
+    joint_rows = df[df["label3"] == "joint"]
+    if len(joint_rows) == 0:
+        print("Warning: threshold_results_by_joint: no 'joint' rows found; returning unthresholded df")
+        return df
+
+    # Use explicit lag columns rather than assuming a fixed number of trailing metadata columns.
+    lag_pairs = _get_numeric_lag_columns(joint_rows)
+    lag_cols = [c for _, c in lag_pairs]
+    if not lag_cols:
+        print("Warning: threshold_results_by_joint: no lag-like columns found; returning unthresholded df")
+        return df
+
+    max_mask = joint_rows.loc[:, lag_cols].max(axis=1) > thresh
+    subject_electrode_list = [
+        f"{row['subject']}_{row['electrode']}" for _, row in joint_rows.loc[max_mask].iterrows()
+    ]
+
     # only keep rows where subject_electrode is in the list
-    df['subject_electrode'] = df['subject'].astype(str) + '_' + df['electrode'].astype(str)
-    df = df[df['subject_electrode'].isin(subject_electrode_list)]
-    df = df.drop(columns=['subject_electrode'])
+    df = df.copy()
+    df["subject_electrode"] = df["subject"].astype(str) + "_" + df["electrode"].astype(str)
+    df = df[df["subject_electrode"].isin(subject_electrode_list)]
+    df = df.drop(columns=["subject_electrode"])
     return df
 
 def _plot_roi_on_ax(ax, args, sig_results, roi, mode="comp", ymax=None, plot_indiv=False, title_prefix="", df_i=None):
@@ -519,6 +615,15 @@ def load_res_add_roi_threshold(f, thresh):
     """
     df = pd.read_csv(f)
     df = add_roi_label_to_results(df)
+
+    # Normalize label3 across result sources.
+    # Many aggregated CSVs store band labels as "_banded_joint" etc.
+    if "label3" in df.columns:
+        try:
+            df["label3"] = df["label3"].astype(str).str.replace("_banded_", "", regex=False)
+        except Exception:
+            pass
+
     if thresh is not None:
         df = threshold_results_by_joint(df, thresh)
     return df
@@ -700,6 +805,84 @@ def select_shared_and_last_columns(df, shared_indices, last_n=5):
     shared_columns = df.iloc[:, shared_indices]
     last_columns = df.iloc[:, -last_n:]
     return pd.concat([shared_columns, last_columns], axis=1)
+
+
+def _get_numeric_lag_columns(df):
+    """Return (lag_value, column_name) pairs for columns that look like lag columns."""
+    lag_pairs = []
+    for c in df.columns:
+        # common metadata columns in these result CSVs
+        if c in {"subject", "electrode", "roi", "label", "label2", "label3", "threshold", "fold", "label1", "label2"}:
+            continue
+        try:
+            # lag columns are typically ints encoded as strings
+            lag_pairs.append((int(float(c)), c))
+        except Exception:
+            continue
+    lag_pairs.sort(key=lambda t: t[0])
+    return lag_pairs
+
+
+def select_lag_range_and_last_columns(df, lag_min=-2000, lag_max=2000, last_n=5):
+    """Select a lag window plus trailing metadata columns.
+
+    IMPORTANT: Many of our aggregated result CSVs store lag columns as *index strings*
+    ("0", "1", ..., "N") rather than actual lag values. In that case, we infer the
+    underlying symmetric lag grid and select the indices corresponding to the requested
+    [lag_min, lag_max] window.
+
+    For result tables whose lag columns are actual lag values (e.g. "-2000", "-1950", ...)
+    we fall back to selecting by numeric lag.
+    """
+
+    if last_n < 0:
+        raise ValueError("last_n must be >= 0")
+
+    # Case A: lag columns are stored as index strings "0".."N" (common in this codebase).
+    numeric_like_cols = [c for c in df.columns if str(c).lstrip("-").isdigit()]
+    if numeric_like_cols:
+        try:
+            idxs = sorted(int(c) for c in numeric_like_cols)
+        except Exception:
+            idxs = []
+
+        # Require contiguous 0..N to avoid misclassifying numeric metadata columns.
+        if idxs and idxs[0] == 0 and idxs == list(range(idxs[-1] + 1)):
+            n_lag_cols = idxs[-1] + 1
+
+            # Heuristic: most runs use 50ms step; infer from requested window if possible.
+            # (If window is a multiple of 50ms, assume 50; otherwise fall back to 10.)
+            step = 50 if (lag_max - lag_min) % 50 == 0 else 10
+
+            half_range = int(((n_lag_cols - 1) // 2) * step)
+            source_lags = np.arange(-half_range, half_range + step, step)
+            target_lags = np.arange(lag_min, lag_max + step, step)
+
+            # Map target lag values to index columns.
+            start = source_lags[0]
+            selected_cols = []
+            for lag in target_lags:
+                if lag < source_lags[0] or lag > source_lags[-1]:
+                    continue
+                col_idx = int((lag - start) / step)
+                col_name = str(col_idx)
+                if col_name in df.columns:
+                    selected_cols.append(col_name)
+
+            selected_lags = df.loc[:, selected_cols]
+            last_columns = df.iloc[:, -last_n:] if last_n else df.iloc[:, 0:0]
+            out = pd.concat([selected_lags, last_columns], axis=1)
+            out = out.loc[:, ~out.columns.duplicated()]
+            return out
+
+    # Case B: lag columns are actual lag values (as strings or numbers).
+    lag_pairs = _get_numeric_lag_columns(df)
+    lag_cols = [c for lag, c in lag_pairs if lag_min <= lag <= lag_max]
+    selected_lags = df.loc[:, lag_cols]
+    last_columns = df.iloc[:, -last_n:] if last_n else df.iloc[:, 0:0]
+    out = pd.concat([selected_lags, last_columns], axis=1)
+    out = out.loc[:, ~out.columns.duplicated()]
+    return out
 
 
 def calculate_auc(df, label3_val, lag_start, lag_end):
