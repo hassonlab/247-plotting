@@ -48,6 +48,9 @@ def arg_parser():
     parser.add_argument("--ls-by", type=str, default=None)
     parser.add_argument("--split", type=str, default=None)
     parser.add_argument("--split-by", type=str, default=None)
+    parser.add_argument("--sig-lag-file", type=str, default=None)
+    parser.add_argument("--sig-lag-q-thresh", type=float, default=0.05)
+    parser.add_argument("--sig-lag-dot-size", type=float, default=12)
     parser.add_argument("--outfile", default="results/figures/tfs-encoding.pdf")
     args = parser.parse_args()
 
@@ -191,6 +194,57 @@ def set_up_environ(args):
     arg_assert(args)  # sanity checks
 
     return args
+
+
+def load_sig_lag_map(args):
+    sig_lag_map = {}
+    if args.sig_lag_file is None:
+        args.sig_lag_map = sig_lag_map
+        return args
+
+    sig_df = pd.read_csv(args.sig_lag_file)
+    required_cols = {"sid", "electrode", "key", "lag_ms"}
+    assert required_cols.issubset(sig_df.columns), (
+        "sig lag file must contain columns: sid, electrode, key, lag_ms"
+    )
+
+    if "is_significant" in sig_df.columns:
+        sig_df = sig_df[sig_df["is_significant"] == 1]
+    elif "q_value" in sig_df.columns:
+        sig_df = sig_df[sig_df["q_value"] <= args.sig_lag_q_thresh]
+    else:
+        raise Exception("sig lag file must contain either is_significant or q_value")
+
+    lags_show_ms = set(np.array(args.lags_show) * 1000)
+    sig_df = sig_df[sig_df["key"].isin(args.unique_keys)]
+    sig_df = sig_df[sig_df["lag_ms"].isin(lags_show_ms)]
+
+    sig_df = sig_df.loc[:, ["sid", "electrode", "key", "lag_ms"]].drop_duplicates()
+    for (sid, electrode, key), subdf in sig_df.groupby(["sid", "electrode", "key"]):
+        sig_lag_map[(int(sid), str(electrode), str(key))] = sorted(
+            (subdf["lag_ms"].to_numpy(dtype=float) / 1000).tolist()
+        )
+
+    print(f"Loaded significant lag map for {len(sig_lag_map)} sid/electrode/key combos")
+    args.sig_lag_map = sig_lag_map
+    return args
+
+
+def _plot_sig_lag_dots(args, ax, sig_xvals):
+    if len(sig_xvals) == 0:
+        return
+    y_min, y_max = ax.get_ylim()
+    y_val = y_max - 0.03 * (y_max - y_min)
+    y_vals = [y_val] * len(sig_xvals)
+    ax.scatter(
+        sig_xvals,
+        y_vals,
+        c="k",
+        s=args.sig_lag_dot_size,
+        marker="o",
+        linewidths=0,
+        zorder=10,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -422,6 +476,10 @@ def plot_electrodes(args, df, pdf):
             ylabel="Correlation (r)",
             title=f"{sid} {electrode}",
         )
+        sig_xvals = []
+        for key in args.unique_keys:
+            sig_xvals.extend(args.sig_lag_map.get((sid, electrode, key), []))
+        _plot_sig_lag_dots(args, ax, sorted(set(sig_xvals)))
         imname = get_elecbrain(electrode)
         if os.path.isfile(imname):
             arr_image = plt.imread(imname, format="png")
@@ -564,6 +622,14 @@ def plot_electrodes_split(args, df, pdf):
                 ylabel="Correlation (r)",
                 title=f"{sid} {electrode} {plot}",
             )
+            if args.split_by == "keys":
+                sig_xvals = args.sig_lag_map.get((sid, electrode, plot), [])
+            else:
+                sig_xvals = []
+                for key in args.unique_keys:
+                    sig_xvals.extend(args.sig_lag_map.get((sid, electrode, key), []))
+                sig_xvals = sorted(set(sig_xvals))
+            _plot_sig_lag_dots(args, ax, sig_xvals)
         imname = get_elecbrain(electrode)
         if os.path.isfile(imname):
             arr_image = plt.imread(imname, format="png")
@@ -586,6 +652,7 @@ def main():
     # Aggregate data
     df = aggregate_data(args)
     df = organize_data(args, df)
+    args = load_sig_lag_map(args)
 
     # Plotting
     pdf = PdfPages(args.outfile)

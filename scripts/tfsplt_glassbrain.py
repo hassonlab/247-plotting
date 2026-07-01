@@ -149,7 +149,7 @@ def add_effect(args, df):
 # -----------------------------------------------------------------------------
 
 
-def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None, ax=None):
+def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None, ax=None, colorbar=True):
     """Plot glass brain plot given a df file with coordinates and effects
 
     Args:
@@ -163,6 +163,11 @@ def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None,
         fig, ax = plt.subplots(1, 1, dpi=300, figsize=(8, 6))
     else:
         fig = ax.figure
+        
+    # Sort values by distance from the mean, so that the most extreme values are plotted last (on top)
+    mean_effect = df_plot["effect"].mean()
+    df_plot["_dist_from_mean"] = (df_plot["effect"] - mean_effect).abs()
+    df_plot = df_plot.sort_values("_dist_from_mean", ascending=True).reset_index(drop=True)
     coords = np.array([df_plot.MNI_X, df_plot.MNI_Y, df_plot.MNI_Z]).T
 
     if args.effect == "color":
@@ -172,10 +177,10 @@ def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None,
     else:
         cmap = args.cmap
 
-    plot_markers(
+    display = plot_markers(
         df_plot.effect,
         coords,
-        node_size=20,
+        node_size=40,
         display_mode="l",
         # node_vmin=0,
         # node_vmax=0.25,
@@ -187,14 +192,15 @@ def plot_glassbrain(args, df_plot, outfile="", show=False, vmin=None, vmax=None,
         axes=ax,
         alpha=0.8,
         node_cmap=cmap,
-        colorbar=True,
+        colorbar=colorbar,
+        node_kwargs=getattr(args, 'node_kwargs', None),
     )
     if show and ax is None:
         plt.show()
     if outfile and ax is None:
         plt.savefig(outfile)
 
-    return ax
+    return display
 
 
 def make_glassbrain(args, df, outfile=""):

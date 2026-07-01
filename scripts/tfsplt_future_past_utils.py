@@ -28,6 +28,7 @@ def plot_effect_glassbrain(
     ax=None,
     title=None,
     colorbar=True,
+    node_kwargs=None,
 ):
 
 
@@ -39,6 +40,7 @@ def plot_effect_glassbrain(
             self.effect = ""
             self.cmap = cmap if cmap is not None else mpl.cm.viridis
             self.outfile = outfile
+            self.node_kwargs = node_kwargs
 
     args = Args()
     grouped_plot = df.reset_index() if "index" in df.columns or df.index.name is not None else df.copy()
@@ -48,10 +50,13 @@ def plot_effect_glassbrain(
     df_coor.loc[df_coor['subject'] == '717', 'subject'] = '7170'
     df_coor = df_coor.rename(columns={"name": "electrode"})
     grouped_plot = pd.merge(grouped_plot, df_coor, on=["subject", "electrode"], how="left")
-    ax = plot_glassbrain(args, grouped_plot, outfile=outfile if not show else "", show=show, vmin=vmin, vmax=vmax, ax=ax, colorbar=colorbar)
-    if title is not None and ax is not None:
-        ax.set_title(title, fontsize=12, pad=10)
-    return ax
+    display = plot_glassbrain(args, grouped_plot, outfile=outfile if not show else "", show=show, vmin=vmin, vmax=vmax, ax=ax, colorbar=colorbar)
+    if title is not None:
+        if hasattr(display, "title"): # if it's a display object
+            display.title(title, size=12)
+        elif hasattr(display, "set_title"): # if it's an axes
+            display.set_title(title, fontsize=12, pad=10)
+    return display
 
 def filter_valid_rois(df, lines, rois):
     """
@@ -430,10 +435,19 @@ def plot_all_indiv_electrodes(ax, args, df, color, label):
 
 def add_roi_label_to_results(df):
     all_elecs = pd.read_csv("/scratch/gpfs/HASSON/kw1166/247/247-plotting/data/plotting/paper-sts/base_df.csv")
-    roi_lookup = all_elecs.set_index(['subject', 'electrode'])['roi_1'].to_dict()
-    # Assign ROI to banded_comp
-    df['roi'] = df.apply(
-        lambda row: roi_lookup.get((row['subject'], row['electrode']), None), axis=1
+
+    # Normalize key types to avoid int-vs-str mismatches in subject/electrode lookup.
+    all_elecs["subject"] = all_elecs["subject"].astype(str)
+    all_elecs["electrode"] = all_elecs["electrode"].astype(str)
+    roi_lookup = all_elecs.set_index(["subject", "electrode"])["roi_1"].to_dict()
+
+    df = df.copy()
+    df["subject"] = df["subject"].astype(str)
+    df["electrode"] = df["electrode"].astype(str)
+
+    # Assign ROI to each subject/electrode row.
+    df["roi"] = df.apply(
+        lambda row: roi_lookup.get((row["subject"], row["electrode"]), None), axis=1
     )
     return df
 
@@ -576,8 +590,28 @@ def plot_single_roi_side_by_side(args, sig_results_dict, roi, mode="comp", ymax=
         titles = [f"Dataset {i+1} Results -" for i in range(n_plots)]
 
 
+    # Build a pruned dict: contexts use joint only; word-only keeps all rows (concatenate any entries for that df_i/roi).
+    pruned = {}
+    word_df_indices = set()
+    for (df_i, result, roi_key), df in sig_results_dict.items():
+        if roi_key != roi:
+            continue
+        if result == "word":
+            word_df_indices.add(df_i)
+
+    for (df_i, result, roi_key), df in sig_results_dict.items():
+        if roi_key != roi:
+            continue
+        if result == "joint":
+            pruned[(df_i, "joint", roi_key)] = df
+
+    for df_i in word_df_indices:
+        dfs_to_concat = [v for (k_i, _, k_roi), v in sig_results_dict.items() if k_i == df_i and k_roi == roi]
+        if dfs_to_concat:
+            pruned[(df_i, "word", roi)] = pd.concat(dfs_to_concat, ignore_index=True)
+
     for i, (ax, title) in enumerate(zip(axes, titles)):
-        _plot_roi_on_ax(ax, args, sig_results_dict, roi, mode=mode, ymax=ymax, plot_indiv=False, title_prefix=title, df_i=i)
+        _plot_roi_on_ax(ax, args, pruned, roi, mode=mode, ymax=ymax, plot_indiv=False, title_prefix=title, df_i=i)
 
     plt.tight_layout()
     if save:
@@ -1644,6 +1678,9 @@ def plot_all_lines_across_datasets(args, sig_results_dict, roi, mode="comp", yma
     # Create figure with 4 subplots in a row
     n_lines = len(args.lines)
     fig, axes = plt.subplots(1, n_lines, figsize=(20, 5))
+    # When n_lines == 1, axes is a single Axes; make it indexable for uniform code path
+    if not isinstance(axes, (list, np.ndarray)):
+        axes = np.array([axes])
     
     # Plot each line type in its own subplot
     for line_idx, line in enumerate(args.lines):
@@ -1719,10 +1756,18 @@ def plot_all_lines_across_datasets(args, sig_results_dict, roi, mode="comp", yma
         ax.tick_params(axis='both', which='both', labelsize=10)
         
         ax.legend(loc="best", frameon=False, fontsize=9)
-        
+
         mode_full = "Comprehension" if mode == "comp" else "Production"
         ax.set_title(f"{args.legends[line_idx]}", fontsize=12)
-        
+
+    if save:
+        os.makedirs(args.res_dir, exist_ok=True)
+        outfile = os.path.join(args.res_dir, f"{roi}_{mode}_all_models.png")
+        plt.tight_layout()
+        plt.savefig(outfile, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
     
     # Add overall title
     mode_full = "Comprehension" if mode == "comp" else "Production"
@@ -1734,3 +1779,64 @@ def plot_all_lines_across_datasets(args, sig_results_dict, roi, mode="comp", yma
         plt.close(fig)
     else:
         plt.show()
+
+
+def _get_numeric_lag_columns(df):
+    """Return (lag_value, column_name) pairs for columns that look like lag columns."""
+    lag_pairs = []
+    for c in df.columns:
+        if c in {"subject", "electrode", "roi", "label", "label2", "label3", "threshold", "fold", "label1"}:
+            continue
+        try:
+            lag_pairs.append((int(float(c)), c))
+        except Exception:
+            continue
+    lag_pairs.sort(key=lambda t: t[0])
+    return lag_pairs
+
+
+def select_lag_range_and_last_columns(df, lag_min=-2000, lag_max=2000, last_n=5):
+    """Select a lag window plus trailing metadata columns.
+
+    Handles both index-string columns ("0","1",...,"N") and actual lag-value columns
+    ("-2000","-1950",...). Returns a DataFrame with only the selected lag columns and
+    the last `last_n` metadata columns.
+    """
+    if last_n < 0:
+        raise ValueError("last_n must be >= 0")
+
+    numeric_like_cols = [c for c in df.columns if str(c).lstrip("-").isdigit()]
+    if numeric_like_cols:
+        try:
+            idxs = sorted(int(c) for c in numeric_like_cols)
+        except Exception:
+            idxs = []
+
+        if idxs and idxs[0] == 0 and idxs == list(range(idxs[-1] + 1)):
+            n_lag_cols = idxs[-1] + 1
+            step = 50 if (lag_max - lag_min) % 50 == 0 else 10
+            half_range = int(((n_lag_cols - 1) // 2) * step)
+            source_lags = np.arange(-half_range, half_range + step, step)
+            target_lags = np.arange(lag_min, lag_max + step, step)
+            start = source_lags[0]
+            selected_cols = []
+            for lag in target_lags:
+                if lag < source_lags[0] or lag > source_lags[-1]:
+                    continue
+                col_idx = int((lag - start) / step)
+                col_name = str(col_idx)
+                if col_name in df.columns:
+                    selected_cols.append(col_name)
+            selected_lags = df.loc[:, selected_cols]
+            last_columns = df.iloc[:, -last_n:] if last_n else df.iloc[:, 0:0]
+            out = pd.concat([selected_lags, last_columns], axis=1)
+            out = out.loc[:, ~out.columns.duplicated()]
+            return out
+
+    lag_pairs = _get_numeric_lag_columns(df)
+    lag_cols = [c for lag, c in lag_pairs if lag_min <= lag <= lag_max]
+    selected_lags = df.loc[:, lag_cols]
+    last_columns = df.iloc[:, -last_n:] if last_n else df.iloc[:, 0:0]
+    out = pd.concat([selected_lags, last_columns], axis=1)
+    out = out.loc[:, ~out.columns.duplicated()]
+    return out
